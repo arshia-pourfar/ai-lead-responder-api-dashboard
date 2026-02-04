@@ -1,26 +1,119 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* =======================================================
+   🤖 AI Mail Theme — Tailwind Utility Colors
+======================================================= */
+
+@theme {
+  /* ---------- LIGHT MODE ---------- */
+
+  /* Surfaces */
+  --bg: #F4F6F8;
+  --card: #FFFFFF;
+  --border: #E5E7EB;
+
+  /* Brand */
+  --primary: #0D9488;
+  --primary-hover: #0F766E;
+
+  --accent: #FF5C5C;
+  --accent-hover: #E54848;
+
+  /* Text */
+  --text: #111827;
+  --muted: #6B7280;
+
+  /* States */
+  --success: #16A34A;
+  --warning: #F59E0B;
+  --danger: #DC2626;
+
+  /* Tags */
+  --tag-unread: #6366F1;
+  --tag-ready: #0D9488;
+  --tag-sent: #9CA3AF;
+  --tag-important: #FF5C5C;
+
+  /* Map to Tailwind Colors */
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-border: var(--border);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --color-tag-unread: var(--tag-unread);
+  --color-tag-ready: var(--tag-ready);
+  --color-tag-sent: var(--tag-sent);
+  --color-tag-important: var(--tag-important);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ---------- DARK MODE ---------- */
+
+html.dark {
+  --bg: #0B0F14;
+  --card: #111827;
+  --border: #1F2933;
+
+  --primary: #14B8A6;
+  --primary-hover: #0D9488;
+
+  --accent: #FF6B6B;
+  --accent-hover: #FF5252;
+
+  --text: #E5E7EB;
+  --muted: #9CA3AF;
+
+  --success: #22C55E;
+  --warning: #FBBF24;
+  --danger: #EF4444;
+
+  --tag-unread: #818CF8;
+  --tag-ready: #14B8A6;
+  --tag-sent: #6B7280;
+  --tag-important: #FF6B6B;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ---------- BASE ---------- */
+
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  overflow: hidden;
+  font-family: Inter, Arial, sans-serif;
+}
+
+/* ================= Scrollbar سبک ================= */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 3px;
+  /* نازک‌تر */
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+  /* کمتر معلوم */
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 100, 100, 0.3);
+  /* کمتر مشخص */
+  border-radius: 4px;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 100, 100, 0.3) transparent;
 }
