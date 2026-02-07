@@ -5,6 +5,7 @@ import { Search, Check, Sparkles } from "lucide-react";
 import EmailItem from "@/components/email/EmailItem";
 import Select from "@/components/ui/Select";
 import Stat from "@/components/ui/Stat";
+import PageHeader from "@/components/ui/Header";
 
 const dummy = Array.from({ length: 12 });
 
@@ -12,27 +13,17 @@ export default function ReadyToSendPage() {
   const [search, setSearch] = useState("");
 
   return (
-    <div className="h-full flex flex-col gap-4">
+    <div className="h-full flex flex-col gap-4 overflow-auto">
 
       {/* HEADER */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Ready To Send</h1>
-          <p className="text-xs text-muted">AI Replies Waiting Approval</p>
-        </div>
-
-        <div className="flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1 border border-border px-2 py-1 rounded-md">
-            <Sparkles size={14} className="text-primary" />
-            AI Accuracy 91%
-          </div>
-
-          <button className="flex items-center gap-1 px-3 py-1 border border-success rounded-md text-success hover:bg-success/10">
-            <Check size={14} />
-            Confirm All
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Ready To Send"
+        subtitle="AI Replies Waiting Approval"
+        stats={[
+          { icon: Sparkles, label: "AI Accuracy", value: "91%", color: "text-primary" },
+          { icon: Check, label: "Pending Approvals", value: 12, color: "text-success" },
+        ]}
+      />
 
       {/* FILTER PANEL */}
       <div className="border border-border rounded-xl p-3 flex flex-col gap-3">
@@ -66,7 +57,7 @@ export default function ReadyToSendPage() {
 
       {/* LIST ACTION BAR */}
       <div className="flex justify-between items-center text-xs">
-        <span className="text-muted">12 emails</span>
+        <span className="text-muted">{dummy.length} emails</span>
 
         <div className="flex gap-2">
           <button className="border border-border px-2 py-1 rounded-md hover:border-primary">
@@ -79,7 +70,7 @@ export default function ReadyToSendPage() {
       </div>
 
       {/* LIST */}
-      <div className="flex-1 overflow-y-auto pe-1 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto pe-1 scrollbar-thin flex flex-col gap-2">
         {dummy.map((_, i) => (
           <EmailItem
             key={i}

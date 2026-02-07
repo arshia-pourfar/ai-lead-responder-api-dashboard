@@ -2,20 +2,21 @@
 
 import Card from "@/components/ui/Card";
 import EmailItem from "@/components/email/EmailItem";
-import Link from "next/link";
+import PageHeader from "@/components/ui/Header";
 
 const dummy = Array.from({ length: 6 });
 
 export default function Dashboard() {
   return (
-    <div className="h-full flex flex-col gap-3">
+    <div className="h-full flex flex-col gap-3 overflow-auto">
+
       {/* HEADER */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-xs text-muted">AI Email Overview</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle="AI Email Overview"
+        // می‌تونی stats اینجا اضافه کنی، مثلا:
+        stats={[{ label: 'Total Emails', value: 200 }, { label: 'Unread', value: 28 }]}
+      />
 
       {/* GRID */}
       <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 overflow-hidden">
@@ -50,9 +51,9 @@ function SectionCard({
         </div>
       }
       actions={
-        <Link href={link ? link : '/'} className={`${link ? '' : 'hidden'} text-sm text-primary hover:underline`}>
+        <a href={link ? link : '/'} className={`${link ? '' : 'hidden'} text-sm text-primary hover:underline`}>
           View All
-        </Link>
+        </a>
       }
       footer={
         tag === "ready"

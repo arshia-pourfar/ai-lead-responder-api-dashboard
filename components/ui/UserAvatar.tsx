@@ -10,7 +10,7 @@ export default function UserAvatar() {
       {/* AVATAR */}
       <button
         onClick={() => setOpen(!open)}
-        className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-sm font-semibold text-text hover:border-primary transition"
+        className="size-11 rounded-full border border-border flex items-center justify-center text-sm font-semibold text-text hover:border-primary transition"
       >
         A
       </button>

@@ -20,7 +20,7 @@ export default function PageHeader({
     stats?: StatItem[];
 }) {
     return (
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex items-start justify-between mb-4">
             {/* LEFT */}
             <div>
                 <h1 className="text-xl font-semibold text-text">{title}</h1>
