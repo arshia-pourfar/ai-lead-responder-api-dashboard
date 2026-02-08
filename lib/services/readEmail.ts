@@ -4,14 +4,22 @@ import { Readable } from "stream";
 import dotenv from "dotenv";
 dotenv.config();
 
+interface ImapConfig {
+    user: string;
+    password: string;
+    host: string;
+    port?: number;
+    tls?: boolean;
+    tlsOptions?: object;
+}
 
-const imapConfig: Imap.Config = {
+const imapConfig: ImapConfig = {
     user: process.env.EMAIL_USER || "",
     password: process.env.EMAIL_PASS || "",
     host: "imap.gmail.com",
     port: 993,
     tls: true,
-    tlsOptions: { rejectUnauthorized: false }
+    tlsOptions: { rejectUnauthorized: false },
 };
 
 export interface Email {
@@ -21,15 +29,34 @@ export interface Email {
     text: string;
 }
 
-export function readOneEmail(): Promise<Email | null> {
+// نوع خروجی تابع simpleParser
+type ParsedEmail = Awaited<ReturnType<typeof simpleParser>>;
+
+// interface ساده برای msg
+interface ImapMessage {
+    on(event: "body", callback: (stream: Readable) => void): void;
+}
+
+async function parseEmail(stream: Readable): Promise<Email> {
+    const parsed: ParsedEmail = await simpleParser(stream);
+    return {
+        from: parsed.from?.value?.[0]?.address || "",
+        name: parsed.from?.value?.[0]?.name || "",
+        subject: parsed.subject || "",
+        text: parsed.text || "",
+    };
+}
+
+// خواندن یک ایمیل
+export async function readOneEmail(): Promise<Email | null> {
     return new Promise((resolve, reject) => {
         const imap = new Imap(imapConfig);
 
         imap.once("ready", () => {
-            imap.openBox("INBOX", false, (err) => {
+            imap.openBox("INBOX", false, (err: Error | null) => {
                 if (err) return reject(err);
 
-                imap.search(["UNSEEN"], (err, results) => {
+                imap.search(["UNSEEN"], (err: Error | null, results?: number[]) => {
                     if (err || !results || results.length === 0) {
                         imap.end();
                         return resolve(null);
@@ -38,23 +65,20 @@ export function readOneEmail(): Promise<Email | null> {
                     const latest = results[results.length - 1];
                     const f = imap.fetch(latest, { bodies: "" });
 
-                    f.on("message", (msg) => {
+                    f.on("message", (msg: ImapMessage) => {
                         msg.on("body", (stream: Readable) => {
-                            simpleParser(stream)
-                                .then(parsed => {
+                            parseEmail(stream)
+                                .then((email) => {
                                     imap.addFlags(latest, "\\Seen", () => {
                                         imap.end();
-                                        resolve({
-                                            from: parsed.from?.value?.[0]?.address || "",
-                                            name: parsed.from?.value?.[0]?.name || "",
-                                            subject: parsed.subject || "",
-                                            text: parsed.text || ""
-                                        });
+                                        resolve(email);
                                     });
                                 })
                                 .catch(reject);
                         });
                     });
+
+                    f.once("error", reject);
                 });
             });
         });
@@ -64,16 +88,17 @@ export function readOneEmail(): Promise<Email | null> {
     });
 }
 
-export function readUnreadEmails(limit = 10): Promise<Email[]> {
+// خواندن چند ایمیل خوانده نشده
+export async function readUnreadEmails(limit = 10): Promise<Email[]> {
     return new Promise((resolve, reject) => {
         const imap = new Imap(imapConfig);
 
         imap.once("ready", () => {
-            imap.openBox("INBOX", false, (err) => {
+            imap.openBox("INBOX", false, (err: Error | null) => {
                 if (err) return reject(err);
 
-                imap.search(["UNSEEN"], (err, results) => {
-                    if (err || !results) {
+                imap.search(["UNSEEN"], (err: Error | null, results?: number[]) => {
+                    if (err || !results || results.length === 0) {
                         imap.end();
                         return resolve([]);
                     }
@@ -83,16 +108,11 @@ export function readUnreadEmails(limit = 10): Promise<Email[]> {
 
                     const f = imap.fetch(latest, { bodies: "" });
 
-                    f.on("message", (msg, seqno) => {
+                    f.on("message", (msg: ImapMessage, _seqno: number) => {
                         msg.on("body", (stream: Readable) => {
-                            simpleParser(stream).then(parsed => {
-                                emails.push({
-                                    from: parsed.from?.value?.[0]?.address || "",
-                                    name: parsed.from?.value?.[0]?.name || "",
-                                    subject: parsed.subject || "",
-                                    text: parsed.text || ""
-                                });
-                            });
+                            parseEmail(stream)
+                                .then((email) => emails.push(email))
+                                .catch(console.error);
                         });
                     });
 
@@ -100,6 +120,8 @@ export function readUnreadEmails(limit = 10): Promise<Email[]> {
                         imap.end();
                         resolve(emails);
                     });
+
+                    f.once("error", reject);
                 });
             });
         });
