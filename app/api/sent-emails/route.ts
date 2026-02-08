@@ -6,33 +6,29 @@ import { JwtPayload } from "jsonwebtoken";
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
 
-    // Type Guard واقعی برای JwtPayload
-    if (!user || typeof user === "string" || "status" in user) {
-        // "status in user" یعنی NextResponse
+    if (!user || typeof user === "string" || !("id" in user)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // حالا TypeScript مطمئنه که user از نوع JwtPayload هست
     const userId = (user as JwtPayload).id as string;
 
     try {
-        const emails = await prisma.email.findMany({
-            where: { readyToSell: true, userId },
+        const sentEmails = await prisma.email.findMany({
+            where: { status: "sent", userId },
             include: { account: true },
             orderBy: { createdAt: "desc" },
         });
 
-        const formatted = emails.map((e) => ({
+        const formatted = sentEmails.map((e) => ({
             id: e.id,
             subject: e.subject,
             sender: e.account?.email ?? "unknown",
-            tag: "important" as const,
-            // sellScore: e.sellScore ?? undefined,
+            tag: "sent" as const,
         }));
 
         return NextResponse.json(formatted);
     } catch (err) {
-        console.error("Error fetching ready-to-sell emails:", err);
+        console.error("Error fetching sent emails:", err);
         return NextResponse.json([], { status: 500 });
     }
 }
