@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
     PieChart,
     Pie,
@@ -16,32 +17,65 @@ import PageHeader from "@/components/ui/Header";
 import EmailItem from "@/components/email/EmailItem";
 import { Check, DollarSign } from "lucide-react";
 
-const categoryData = [
-    { name: "Hot", value: 3, color: "#ef4444" },
-    { name: "Warm", value: 4, color: "#3b82f6" },
-    { name: "Cold", value: 3, color: "#6b7280" },
-];
+interface SoldEmail {
+    id: string;
+    subject: string;
+    sender: string;
+    tag: "important";
+    sellScore: number;
+}
 
-const salesData = [
-    { month: "Jan", sales: 4200 },
-    { month: "Feb", sales: 3800 },
-    { month: "Mar", sales: 5000 },
-    { month: "Apr", sales: 4700 },
-];
+interface CategoryData {
+    name: string;
+    value: number;
+    color: string;
+}
 
-type TagType = "ready" | "unread" | "sent" | "important";
-
-const soldEmails: { subject: string; sender: string; tag: TagType; sellScore: number }[] = [
-    { subject: "Client A", sender: "a@mail.com", tag: "important", sellScore: 87 },
-    { subject: "Client B", sender: "b@mail.com", tag: "important", sellScore: 75 },
-    { subject: "Client C", sender: "c@mail.com", tag: "important", sellScore: 92 },
-    { subject: "Client D", sender: "d@mail.com", tag: "important", sellScore: 80 },
-    { subject: "Client E", sender: "e@mail.com", tag: "important", sellScore: 88 },
-    { subject: "Client F", sender: "f@mail.com", tag: "important", sellScore: 95 },
-];
+interface SalesData {
+    month: string;
+    sales: number;
+}
 
 export default function AnalysisPage() {
+    const [soldEmails, setSoldEmails] = useState<SoldEmail[]>([]);
+    const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
+    const [salesData, setSalesData] = useState<SalesData[]>([]);
+    const [loading, setLoading] = useState(true);
 
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                // ایمیل‌های فروخته شده
+                const soldRes = await fetch("/api/ready-to-sell");
+                const soldData = await soldRes.json();
+                setSoldEmails(Array.isArray(soldData) ? soldData : []);
+
+                // دسته‌بندی ایمیل‌ها (Hot, Warm, Cold) می‌تونه از API برگرده
+                const categoryRes = await fetch("/api/email-category-summary");
+                const categorySummary = await categoryRes.json();
+                setCategoryData(Array.isArray(categorySummary) ? categorySummary : []);
+
+                // فروش ماهانه
+                const salesRes = await fetch("/api/sales-summary");
+                const salesSummary = await salesRes.json();
+                setSalesData(Array.isArray(salesSummary) ? salesSummary : []);
+            } catch (err) {
+                console.error(err);
+                setSoldEmails([]);
+                setCategoryData([]);
+                setSalesData([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    if (loading) return <p>Loading...</p>;
+
+    // جمع کل فروش (می‌توانی فرمول را متناسب با دیتا تغییر دهی)
+    const totalSales = soldEmails.reduce((acc, email) => acc + (email.sellScore || 0) * 50, 0);
 
     return (
         <div className="h-full flex flex-col gap-4 overflow-auto">
@@ -50,7 +84,7 @@ export default function AnalysisPage() {
                 title="Analysis"
                 subtitle="AI Sales & Email Insights"
                 stats={[
-                    { icon: DollarSign, label: "Total Sales", value: "$24,200", color: "text-success" },
+                    { icon: DollarSign, label: "Total Sales", value: `$${totalSales}`, color: "text-success" },
                     { icon: Check, label: "Confirmed Emails", value: soldEmails.length, color: "text-primary" },
                 ]}
             />
@@ -99,19 +133,22 @@ export default function AnalysisPage() {
                 </div>
             </div>
 
-            {/* SOLD EMAILS LIST با EmailItem */}
+            {/* SOLD EMAILS LIST */}
             <div className="border border-border rounded-xl p-4 flex flex-col gap-2">
                 <h3 className="font-semibold text-sm mb-2">Sold Emails</h3>
-                {soldEmails.map((email, i) => (
-                    <div key={i} className="flex flex-col gap-1">
+                {soldEmails.length > 0 ? (
+                    soldEmails.map((email) => (
                         <EmailItem
+                            key={email.id}
                             subject={email.subject}
                             sender={email.sender}
-                            tag={email.tag}
+                            tag="important"
                             sellScore={email.sellScore}
                         />
-                    </div>
-                ))}
+                    ))
+                ) : (
+                    <p className="text-xs text-muted">No sold emails found</p>
+                )}
             </div>
 
             {/* FUTURE AI ANALYSIS */}

@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  name        String   @default("") // اضافه شد
+  email       String   @unique
+  password    String
+  plan        String   @default("free")
+  apiKey      String?  @unique
+  accessCode  String   @unique
+  deviceLimit Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  // relations
+  emails        Email[]
+  emailAccounts EmailAccount[]
+  prompts       Prompt[]
+  categories    Category[]
+}
+
+model EmailAccount {
+  id       String @id @default(uuid())
+  provider String
+  email    String
+
+  // relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  emails Email[]
+}
+
+model Email {
+  id          String   @id @default(uuid())
+  subject     String
+  body        String
+  aiReply     String?
+  status      String   @default("draft") // draft, ready_send, sent, analyzed
+  tag         String   @default("unread") // unread, read, sent, important
+  readyToSend Boolean  @default(false)
+  readyToSell Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  // relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  account   EmailAccount? @relation(fields: [accountId], references: [id])
+  accountId String?
+}
+
+model Prompt {
+  id      String @id @default(uuid())
+  title   String
+  content String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+}
+
+model Category {
+  id   String @id @default(uuid())
+  name String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+}
