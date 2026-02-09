@@ -1,38 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { authGuard } from "@/lib/middleware/authMiddleware";
-import { JwtPayload } from "jsonwebtoken";
 
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
-
-    // Type Guard واقعی برای JwtPayload
-    if (!user || typeof user === "string" || "status" in user) {
-        // "status in user" یعنی NextResponse
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!user || typeof user !== "object" || !("id" in user)) {
+        return NextResponse.json([], { status: 401 });
     }
-
-    // حالا TypeScript مطمئنه که user از نوع JwtPayload هست
-    const userId = (user as JwtPayload).id as string;
 
     try {
         const emails = await prisma.email.findMany({
-            where: { readyToSell: true, userId },
+            where: { userId: user.id, readyToSell: true },
             include: { account: true },
             orderBy: { createdAt: "desc" },
         });
 
-        const formatted = emails.map((e) => ({
-            id: e.id,
-            subject: e.subject,
-            sender: e.account?.email ?? "unknown",
-            tag: "important" as const,
-            // sellScore: e.sellScore ?? undefined,
-        }));
-
-        return NextResponse.json(formatted);
+        return NextResponse.json(
+            emails.map(e => ({
+                id: e.id,
+                subject: e.subject,
+                sender: e.account?.email ?? "unknown",
+                tag: "important" as const,
+                // sellScore: e.sellScore ?? 0,
+            }))
+        );
     } catch (err) {
-        console.error("Error fetching ready-to-sell emails:", err);
+        console.error(err);
         return NextResponse.json([], { status: 500 });
     }
 }

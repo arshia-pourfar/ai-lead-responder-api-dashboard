@@ -1,34 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { authGuard } from "@/lib/middleware/authMiddleware";
-import { JwtPayload } from "jsonwebtoken";
 
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
-
-    if (!user || typeof user === "string" || !("id" in user)) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!user || typeof user !== "object" || !("id" in user)) {
+        return NextResponse.json([], { status: 401 });
     }
 
-    const userId = (user as JwtPayload).id as string;
-
     try {
-        const sentEmails = await prisma.email.findMany({
-            where: { status: "sent", userId },
+        const emails = await prisma.email.findMany({
+            where: { userId: user.id, status: "sent" },
             include: { account: true },
             orderBy: { createdAt: "desc" },
         });
 
-        const formatted = sentEmails.map((e) => ({
-            id: e.id,
-            subject: e.subject,
-            sender: e.account?.email ?? "unknown",
-            tag: "sent" as const,
-        }));
-
-        return NextResponse.json(formatted);
+        return NextResponse.json(
+            emails.map(e => ({
+                id: e.id,
+                subject: e.subject,
+                sender: e.account?.email ?? "unknown",
+                tag: "sent" as const,
+            }))
+        );
     } catch (err) {
-        console.error("Error fetching sent emails:", err);
+        console.error(err);
         return NextResponse.json([], { status: 500 });
     }
 }

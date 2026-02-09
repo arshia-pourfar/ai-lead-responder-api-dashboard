@@ -72,3 +72,17 @@ model Category {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
 }
+
+enum EmailStatus {
+  draft
+  ready_send
+  sent
+  analyzed
+}
+
+enum EmailTag {
+  unread
+  read
+  sent
+  important
+}
