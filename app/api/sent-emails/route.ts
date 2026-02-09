@@ -20,6 +20,10 @@ export async function GET(req: NextRequest) {
                 id: e.id,
                 subject: e.subject,
                 sender: e.account?.email ?? "unknown",
+                body: e.body,
+                aiReply: e.aiReply,
+                accountId: e.accountId,
+                createdAt: e.createdAt,
                 tag: "sent" as const,
             }))
         );

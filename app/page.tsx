@@ -22,6 +22,9 @@ export default function Dashboard() {
   const [sentEmails, setSentEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // ایمیلی که برای مشاهده مودال انتخاب شده
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+
   useEffect(() => {
     const fetchAll = async () => {
       try {
@@ -49,7 +52,7 @@ export default function Dashboard() {
   if (loading) return <p className="p-4 text-sm">Loading...</p>;
 
   return (
-    <div className="h-full flex flex-col gap-3 overflow-auto">
+    <div className="h-full flex flex-col gap-3 overflow-auto relative">
       <PageHeader
         title="Dashboard"
         subtitle="AI Email Overview"
@@ -61,11 +64,57 @@ export default function Dashboard() {
         ]}
       />
       <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 overflow-hidden">
-        <SectionCard title="Ready To Send" emails={readyEmails} tag="ready" />
-        <SectionCard title="Unread Emails" emails={unreadEmails} tag="unread" />
-        <SectionCard title="Sent Emails" emails={sentEmails} tag="sent" />
-        <SectionCard title="Important / Sell" emails={sellEmails} tag="important" />
+        <SectionCard
+          title="Ready To Send"
+          emails={readyEmails}
+          tag="ready"
+          onSelectEmail={setSelectedEmail}
+        />
+        <SectionCard
+          title="Unread Emails"
+          emails={unreadEmails}
+          tag="unread"
+          onSelectEmail={setSelectedEmail}
+        />
+        <SectionCard
+          title="Sent Emails"
+          emails={sentEmails}
+          tag="sent"
+          onSelectEmail={setSelectedEmail}
+        />
+        <SectionCard
+          title="Important / Sell"
+          emails={sellEmails}
+          tag="important"
+          onSelectEmail={setSelectedEmail}
+        />
       </div>
+
+      {/* FULL PAGE MODAL */}
+      {selectedEmail && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-bg w-full h-full max-w-5xl max-h-[90vh] overflow-auto p-6 rounded-xl">
+            <h3 className="font-semibold mb-4 text-lg">{selectedEmail.subject}</h3>
+            <p className="text-sm text-muted whitespace-pre-line">
+              {selectedEmail.body || "No content"}
+            </p>
+            {selectedEmail.aiReply && (
+              <div className="mt-4 border-t pt-2">
+                <p className="font-semibold text-sm">AI Reply:</p>
+                <p className="text-sm text-muted whitespace-pre-line">
+                  {selectedEmail.aiReply}
+                </p>
+              </div>
+            )}
+            <button
+              onClick={() => setSelectedEmail(null)}
+              className="mt-4 px-4 py-2 text-sm border border-border rounded-md hover:border-primary"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -73,10 +122,12 @@ export default function Dashboard() {
 function SectionCard({
   title,
   emails,
+  onSelectEmail,
 }: {
   title: string;
   tag: "ready" | "unread" | "sent" | "important";
   emails: Email[];
+  onSelectEmail: (email: Email) => void;
 }) {
   return (
     <Card
@@ -93,10 +144,13 @@ function SectionCard({
         emails.slice(0, 5).map((email) => (
           <EmailItem
             key={email.id}
-            {...email}
-            tag={email.tag ?? "ready"}  // اگر tag undefined بود، پیش‌فرض
-            body={email.body ?? "No content"} // مهم! اگر body undefined بود، مقدار پیش‌فرض بده
-            aiReply={email.aiReply ?? ""}    // اختیاری، اما بهتره همیشه رشته باشه
+            id={email.id}
+            subject={email.subject || "No Subject"}
+            sender={email.sender || "unknown"}
+            body={email.body || "No content"}
+            aiReply={email.aiReply || ""}
+            tag={email.tag ?? "ready"}
+            onSelect={() => onSelectEmail(email)}
           />
         ))
       ) : (

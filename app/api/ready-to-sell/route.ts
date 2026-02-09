@@ -21,6 +21,10 @@ export async function GET(req: NextRequest) {
                 subject: e.subject,
                 sender: e.account?.email ?? "unknown",
                 tag: "important" as const,
+                body: e.body,
+                aiReply: e.aiReply,
+                accountId: e.accountId,
+                createdAt: e.createdAt,
                 // sellScore: e.sellScore ?? 0,
             }))
         );

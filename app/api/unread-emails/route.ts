@@ -9,6 +9,11 @@ export async function GET() {
             id: i.toString(),
             subject: e.subject,
             sender: e.name || e.from,
+            body: e.text,
+            // body: e.body,
+            // aiReply: e.aiReply,
+            // accountId: e.accountId,
+            // createdAt: e.createdAt,
             tag: "unread"
         }));
 
