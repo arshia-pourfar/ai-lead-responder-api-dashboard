@@ -20,7 +20,6 @@ export default function EmailItem({
     id,
     subject,
     sender,
-    body,
     aiReply,
     tag,
     sellScore,

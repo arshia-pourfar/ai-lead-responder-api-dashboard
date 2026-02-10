@@ -50,7 +50,7 @@ export default function AnalysisPage() {
                 const soldData = await soldRes.json();
                 setSoldEmails(Array.isArray(soldData) ? soldData : []);
 
-                // دسته‌بندی ایمیل‌ها (Hot, Warm, Cold) می‌تونه از API برگرده
+                // دسته‌بندی ایمیل‌ها
                 const categoryRes = await fetch("/api/email-category-summary");
                 const categorySummary = await categoryRes.json();
                 setCategoryData(Array.isArray(categorySummary) ? categorySummary : []);
@@ -74,8 +74,13 @@ export default function AnalysisPage() {
 
     if (loading) return <p>Loading...</p>;
 
-    // جمع کل فروش (می‌توانی فرمول را متناسب با دیتا تغییر دهی)
     const totalSales = soldEmails.reduce((acc, email) => acc + (email.sellScore || 0) * 50, 0);
+
+    // تابع برای اطلاع دادن به داشبورد هنگام کلیک روی چشم
+    const handleSelectEmail = (emailId: string) => {
+        console.log("Selected email:", emailId);
+        // می‌توانی اینجا state یا context داشبورد رو آپدیت کنی
+    };
 
     return (
         <div className="h-full flex flex-col gap-4 overflow-auto">
@@ -140,15 +145,19 @@ export default function AnalysisPage() {
                     soldEmails.map((email) => (
                         <EmailItem
                             key={email.id}
+                            id={email.id}
                             subject={email.subject}
                             sender={email.sender}
+                            body={email.subject || "No body available"} // add body
                             tag="important"
                             sellScore={email.sellScore}
+                            onSelect={() => handleSelectEmail(email.id)}
                         />
                     ))
                 ) : (
                     <p className="text-xs text-muted">No sold emails found</p>
                 )}
+
             </div>
 
             {/* FUTURE AI ANALYSIS */}
