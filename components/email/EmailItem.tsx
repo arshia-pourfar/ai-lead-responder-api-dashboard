@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Eye, Pencil } from "lucide-react";
 
 type TagType = "ready" | "unread" | "sent" | "important";
@@ -9,17 +9,19 @@ interface EmailProps {
     id: string;
     subject: string;
     sender: string;
+    manualReply?: string;
     body: string;
     aiReply?: string;
     tag: TagType;
     sellScore?: number;
-    onSelect?: () => void; // prop جدید برای اطلاع دادن به داشبورد
+    onSelect?: () => void;
 }
 
 export default function EmailItem({
     id,
     subject,
     sender,
+    manualReply,
     aiReply,
     tag,
     sellScore,
@@ -27,9 +29,15 @@ export default function EmailItem({
 }: EmailProps) {
     const [decision, setDecision] = useState<"ai" | "ignore" | "manual" | null>(null);
     const [isEditing, setIsEditing] = useState(false);
-    const [manualText, setManualText] = useState("");
     const [editText, setEditText] = useState(aiReply || "");
+    const [manualText, setManualText] = useState(manualReply || "");
+    const [savingEdit, setSavingEdit] = useState(false);
     const [sending, setSending] = useState(false);
+
+    useEffect(() => {
+        setEditText(aiReply || "");
+        setManualText(manualReply || "");
+    }, [aiReply, manualReply]);
 
     const tagMap = {
         ready: "bg-tag-ready/20 text-tag-ready",
@@ -38,13 +46,48 @@ export default function EmailItem({
         important: "bg-tag-important/20 text-tag-important",
     };
 
-    const handleConfirm = async () => {
-        setSending(true);
+    // ذخیره ادیت (AI + Manual) وقتی تیک زده شد
+    const handleSaveEdit = async () => {
+        if (!editText && !manualText) return;
+
+        setSavingEdit(true);
         try {
             const res = await fetch("/api/ready-to-send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ emailId: id }),
+                body: JSON.stringify({
+                    emailId: id,
+                    aiReply: editText,
+                    manualReply: editText, // هر دو یکی بشه
+                    saveOnly: true,
+                }),
+                credentials: "include",
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Save failed");
+            alert("AI & Manual reply saved!");
+            setIsEditing(false);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to save replies");
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
+    // ارسال نهایی ایمیل
+    const handleFinalConfirm = async () => {
+        setSending(true);
+        const finalReply = isEditing ? editText : decision === "manual" ? manualText : aiReply || "";
+
+        try {
+            const res = await fetch("/api/ready-to-send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    emailId: id,
+                    manualReply: finalReply,
+                }),
                 credentials: "include",
             });
             const data = await res.json();
@@ -62,7 +105,6 @@ export default function EmailItem({
         <div className="p-3 border border-border rounded-lg my-2 flex flex-col gap-2">
             {/* HEADER */}
             <div className="flex items-start justify-between gap-3">
-                {/* LEFT SIDE */}
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-3">
                         <div>
@@ -79,36 +121,45 @@ export default function EmailItem({
                 {(tag === "ready" || tag === "unread") && (
                     <div className="flex gap-1">
                         <button
-                            onClick={onSelect} // اینجا اطلاع داده می‌شود
+                            onClick={onSelect}
                             className="p-1.5 border border-border rounded-md text-muted hover:border-primary"
                         >
                             <Eye size={14} />
                         </button>
 
                         {tag === "ready" && (
-                            <button
-                                onClick={() => setIsEditing(!isEditing)}
-                                className="p-1.5 border border-accent rounded-md text-accent hover:bg-accent/10"
-                            >
-                                <Pencil size={14} />
-                            </button>
-                        )}
-
-                        {tag === "ready" && (
-                            <button
-                                onClick={handleConfirm}
-                                disabled={sending}
-                                className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
-                            >
-                                <Check size={14} />
-                            </button>
+                            <>
+                                {!isEditing ? (
+                                    <button
+                                        onClick={() => setIsEditing(true)}
+                                        className="p-1.5 border border-accent rounded-md text-accent hover:bg-accent/10"
+                                    >
+                                        <Pencil size={14} />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleSaveEdit}
+                                        disabled={savingEdit}
+                                        className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
+                                    >
+                                        <Check size={14} />
+                                    </button>
+                                )}
+                                <button
+                                    onClick={handleFinalConfirm}
+                                    disabled={sending}
+                                    className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
+                                >
+                                    <Check size={14} />
+                                </button>
+                            </>
                         )}
                     </div>
                 )}
 
                 {tag === "important" && (
                     <button
-                        onClick={onSelect} // اطلاع به داشبورد برای همه حالت‌ها
+                        onClick={onSelect}
                         className="p-2 border border-border rounded-md text-muted hover:border-primary hover:text-primary"
                     >
                         <Eye size={16} />

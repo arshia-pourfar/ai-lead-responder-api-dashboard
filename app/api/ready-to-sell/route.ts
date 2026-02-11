@@ -18,11 +18,10 @@ export async function GET(req: NextRequest) {
         const response = emails.map(e => ({
             id: e.id,
             subject: e.subject || "No subject",
-            sender: e.account?.email ?? "unknown",
+            sender: e.senderEmail ?? "unknown",
             tag: "important" as const,
             body: e.body || "No body available", // اضافه شد
             aiReply: e.aiReply || "",            // خالی در صورت نبود
-            // sellScore: e.sellScore ?? 0,        // همیشه عدد
             accountId: e.accountId,
             createdAt: e.createdAt,
         }));

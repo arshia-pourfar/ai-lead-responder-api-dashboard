@@ -42,6 +42,8 @@ model Email {
   subject     String
   body        String
   aiReply     String?
+  manualReply String?
+  category    String   @default("support")
   status      String   @default("draft") // draft, ready_send, sent, analyzed
   tag         String   @default("unread") // unread, read, sent, important
   readyToSend Boolean  @default(false)
@@ -54,6 +56,7 @@ model Email {
 
   account   EmailAccount? @relation(fields: [accountId], references: [id])
   accountId String?
+  senderEmail String?   
 }
 
 model Prompt {

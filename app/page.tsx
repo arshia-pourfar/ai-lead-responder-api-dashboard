@@ -9,7 +9,7 @@ interface Email {
   id: string;
   subject: string;
   sender: string;
-  body?: string;
+  body: string;
   aiReply?: string;
   tag?: "ready" | "unread" | "sent" | "important";
   sellScore?: number;
