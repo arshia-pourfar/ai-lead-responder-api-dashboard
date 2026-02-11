@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     if (!user || typeof user !== "object" || !("id" in user)) {
         return NextResponse.json([], { status: 401 });
     }
-
+ 
     try {
         const emails = await prisma.email.findMany({
             where: { userId: user.id, readyToSell: true },
