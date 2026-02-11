@@ -110,7 +110,7 @@ export default function EmailItem({
             setApproving(false);
         }
     };
- 
+  
     // ---------- SAVE EDIT (only save text, no send) ----------
     const handleSaveEdit = async () => {
         if (!editText.trim()) return;
