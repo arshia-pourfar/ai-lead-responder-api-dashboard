@@ -79,7 +79,7 @@ export default function ReadyToSellPage() {
       <div className="flex gap-3 text-xs">
         <Stat label="Hot Leads" value={emails.length} color="text-red-500" />
       </div>
-
+ 
       <div className="flex-1 overflow-y-auto pe-1 scrollbar-thin flex flex-col gap-2">
         {emails.map((email) => (
           <EmailItem
