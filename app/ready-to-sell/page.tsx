@@ -90,7 +90,7 @@ export default function ReadyToSellPage() {
             body={email.body || ""}
             aiReply={email.aiReply || ""}
             tag="important"
-            sellScore={email.sellScore}
+            // sellScore={email.sellScore}
             onSelect={() => setSelectedEmail(email)} // اینجا وصل شد
           />
         ))}

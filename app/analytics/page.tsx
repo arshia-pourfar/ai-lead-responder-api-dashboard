@@ -150,7 +150,7 @@ export default function AnalysisPage() {
                             sender={email.sender}
                             body={email.subject || "No body available"} // add body
                             tag="important"
-                            sellScore={email.sellScore}
+                            // sellScore={email.sellScore}
                             onSelect={() => handleSelectEmail(email.id)}
                         />
                     ))
