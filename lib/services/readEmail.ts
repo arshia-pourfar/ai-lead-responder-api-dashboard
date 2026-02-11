@@ -14,12 +14,12 @@ interface ImapConfig {
 }
 
 const imapConfig: ImapConfig = {
-    user: process.env.EMAIL_USER || "",
-    password: process.env.EMAIL_PASS || "",
+    user: process.env.EMAIL_USER!,
+    password: process.env.EMAIL_PASS!,
     host: "imap.gmail.com",
     port: 993,
     tls: true,
-    tlsOptions: { rejectUnauthorized: false },
+    tlsOptions: { rejectUnauthorized: false }, // ← مهم
 };
 
 export interface Email {
@@ -88,8 +88,8 @@ export async function readOneEmail(): Promise<Email | null> {
     });
 }
 
-// خواندن چند ایمیل خوانده نشده
-export async function readUnreadEmails(limit = 10): Promise<Email[]> {
+// خواندن چند ایمیل خوانده نشده (جدیدترین یا همه)
+export async function readUnreadEmails(limit?: number): Promise<Email[]> {
     return new Promise((resolve, reject) => {
         const imap = new Imap(imapConfig);
 
@@ -103,22 +103,36 @@ export async function readUnreadEmails(limit = 10): Promise<Email[]> {
                         return resolve([]);
                     }
 
-                    const latest = results.slice(-limit);
-                    const emails: Email[] = [];
+                    // محدود کردن تعداد اگر limit داده شده باشه
+                    const selected = limit ? results.slice(-limit) : results;
 
-                    const f = imap.fetch(latest, { bodies: "" });
+                    const parsePromises: Promise<Email>[] = [];
+                    const f = imap.fetch(selected, { bodies: "" });
 
                     f.on("message", (msg: ImapMessage, _seqno: number) => {
-                        msg.on("body", (stream: Readable) => {
-                            parseEmail(stream)
-                                .then((email) => emails.push(email))
-                                .catch(console.error);
+                        const p = new Promise<Email>((res, rej) => {
+                            msg.on("body", (stream: Readable) => {
+                                parseEmail(stream)
+                                    .then((email) => {
+                                        // بعد از خواندن، ایمیل را به حالت خوانده شده علامت می‌زنیم
+                                        const lastMsg = Array.isArray(selected) ? selected[selected.length - 1] : selected;
+                                        imap.addFlags(lastMsg, "\\Seen", () => res(email));
+                                    })
+                                    .catch(rej);
+                            });
                         });
+
+                        parsePromises.push(p);
                     });
 
-                    f.once("end", () => {
-                        imap.end();
-                        resolve(emails);
+                    f.once("end", async () => {
+                        try {
+                            const emails = await Promise.all(parsePromises);
+                            imap.end();
+                            resolve(emails);
+                        } catch (e) {
+                            reject(e);
+                        }
                     });
 
                     f.once("error", reject);

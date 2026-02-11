@@ -141,7 +141,7 @@ function SectionCard({
       }
     >
       {emails.length > 0 ? (
-        emails.slice(0, 5).map((email) => (
+        emails.map((email) => (
           <EmailItem
             key={email.id}
             id={email.id}

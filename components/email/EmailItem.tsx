@@ -13,7 +13,6 @@ interface EmailProps {
     body: string;
     aiReply?: string;
     tag: TagType;
-    sellScore?: number;
     onSelect?: () => void;
 }
 
@@ -21,10 +20,10 @@ export default function EmailItem({
     id,
     subject,
     sender,
+    body,
     manualReply,
     aiReply,
     tag,
-    sellScore,
     onSelect,
 }: EmailProps) {
     const [decision, setDecision] = useState<"ai" | "ignore" | "manual" | null>(null);
@@ -33,6 +32,7 @@ export default function EmailItem({
     const [manualText, setManualText] = useState(manualReply || "");
     const [savingEdit, setSavingEdit] = useState(false);
     const [sending, setSending] = useState(false);
+    const [approving, setApproving] = useState(false);
 
     useEffect(() => {
         setEditText(aiReply || "");
@@ -46,9 +46,48 @@ export default function EmailItem({
         important: "bg-tag-important/20 text-tag-important",
     };
 
-    // ذخیره ادیت (AI + Manual) وقتی تیک زده شد
+    const handleApproveModel = async () => {
+        if (!decision || decision === "ignore") return;
+
+        const finalText =
+            decision === "manual"
+                ? manualText
+                : aiReply || "";
+
+        if (!finalText.trim()) return;
+
+        setApproving(true);
+
+        try {
+            const res = await fetch("/api/unread-emails", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                    emailId: id,
+                    subject: subject,
+                    text: finalText,
+                    body: body,       // متن ایمیل اصلی
+                    sender: sender,   // ایمیل فرستنده اضافه شد
+                }),
+            });
+
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Approve failed");
+
+            alert("Moved to Ready!");
+        } catch (err) {
+            console.error(err);
+            alert("Failed to approve email");
+        } finally {
+            setApproving(false);
+        }
+    };
+
+    // ---------- READY SAVE EDIT ----------
     const handleSaveEdit = async () => {
-        if (!editText && !manualText) return;
+        if (!editText.trim()) return;
 
         setSavingEdit(true);
         try {
@@ -58,41 +97,52 @@ export default function EmailItem({
                 body: JSON.stringify({
                     emailId: id,
                     aiReply: editText,
-                    manualReply: editText, // هر دو یکی بشه
+                    manualReply: editText,
                     saveOnly: true,
                 }),
                 credentials: "include",
             });
+
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Save failed");
-            alert("AI & Manual reply saved!");
+
+            alert("Saved!");
             setIsEditing(false);
         } catch (err) {
             console.error(err);
-            alert("Failed to save replies");
+            alert("Failed");
         } finally {
             setSavingEdit(false);
         }
     };
 
-    // ارسال نهایی ایمیل
+    // ---------- FINAL SEND ----------
     const handleFinalConfirm = async () => {
         setSending(true);
-        const finalReply = isEditing ? editText : decision === "manual" ? manualText : aiReply || "";
+
+        const finalReply =
+            isEditing ? editText :
+                decision === "manual" ? manualText :
+                    aiReply || "";
 
         try {
             const res = await fetch("/api/ready-to-send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({
                     emailId: id,
+                    subject: subject,      // اضافه شد
+                    sender: sender,        // اضافه شد
+                    body: body,            // متن اصلی ایمیل
                     manualReply: finalReply,
                 }),
-                credentials: "include",
             });
+
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Send failed");
-            alert("Email sent successfully!");
+
+            alert("Email sent!");
         } catch (err) {
             console.error(err);
             alert("Failed to send email");
@@ -100,6 +150,7 @@ export default function EmailItem({
             setSending(false);
         }
     };
+
 
     return (
         <div className="p-3 border border-border rounded-lg my-2 flex flex-col gap-2">
@@ -117,54 +168,56 @@ export default function EmailItem({
                     </div>
                 </div>
 
-                {/* RIGHT ACTIONS */}
-                {(tag === "ready" || tag === "unread") && (
-                    <div className="flex gap-1">
-                        <button
-                            onClick={onSelect}
-                            className="p-1.5 border border-border rounded-md text-muted hover:border-primary"
-                        >
-                            <Eye size={14} />
-                        </button>
+                {/* ACTIONS */}
+                <div className="flex gap-1">
+                    <button
+                        onClick={onSelect}
+                        className="p-1.5 border border-border rounded-md text-muted hover:border-primary"
+                    >
+                        <Eye size={14} />
+                    </button>
 
-                        {tag === "ready" && (
-                            <>
-                                {!isEditing ? (
-                                    <button
-                                        onClick={() => setIsEditing(true)}
-                                        className="p-1.5 border border-accent rounded-md text-accent hover:bg-accent/10"
-                                    >
-                                        <Pencil size={14} />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={handleSaveEdit}
-                                        disabled={savingEdit}
-                                        className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
-                                    >
-                                        <Check size={14} />
-                                    </button>
-                                )}
+                    {/* UNREAD CHECK */}
+                    {tag === "unread" && (
+                        <button
+                            onClick={handleApproveModel}
+                            disabled={approving}
+                            className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
+                        >
+                            <Check size={14} />
+                        </button>
+                    )}
+
+                    {/* READY EDIT */}
+                    {tag === "ready" && (
+                        <>
+                            {!isEditing ? (
                                 <button
-                                    onClick={handleFinalConfirm}
-                                    disabled={sending}
+                                    onClick={() => setIsEditing(true)}
+                                    className="p-1.5 border border-accent rounded-md text-accent hover:bg-accent/10"
+                                >
+                                    <Pencil size={14} />
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleSaveEdit}
+                                    disabled={savingEdit}
                                     className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
                                 >
                                     <Check size={14} />
                                 </button>
-                            </>
-                        )}
-                    </div>
-                )}
+                            )}
 
-                {tag === "important" && (
-                    <button
-                        onClick={onSelect}
-                        className="p-2 border border-border rounded-md text-muted hover:border-primary hover:text-primary"
-                    >
-                        <Eye size={16} />
-                    </button>
-                )}
+                            <button
+                                onClick={handleFinalConfirm}
+                                disabled={sending}
+                                className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
+                            >
+                                <Check size={14} />
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* UNREAD OPTIONS */}
@@ -191,24 +244,8 @@ export default function EmailItem({
                 <textarea
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
-                    placeholder="Edit AI reply..."
                     className="mt-2 p-2 border border-border rounded-md text-sm h-24 resize-none bg-bg/50"
                 />
-            )}
-
-            {/* SENT RESULT */}
-            {tag === "sent" && (
-                <div className="text-xs text-muted mt-1">
-                    ✔ Sent successfully — Support Category
-                </div>
-            )}
-
-            {/* IMPORTANT SELL SCORE */}
-            {tag === "important" && sellScore !== undefined && (
-                <div className="text-xs font-semibold mt-1 flex items-center gap-2">
-                    <span className="text-muted">AI Sell Chance:</span>
-                    <span className="text-accent font-semibold">{sellScore}%</span>
-                </div>
             )}
         </div>
     );
