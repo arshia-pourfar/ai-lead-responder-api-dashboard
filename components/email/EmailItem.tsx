@@ -14,6 +14,7 @@ interface EmailProps {
     aiReply?: string;
     tag: TagType;
     onSelect?: () => void;
+    onUpdateEmail?: (id: string, updated: Partial<EmailProps>) => void;
 }
 
 export default function EmailItem({
@@ -25,6 +26,7 @@ export default function EmailItem({
     aiReply,
     tag,
     onSelect,
+    onUpdateEmail,
 }: EmailProps) {
     const [decision, setDecision] = useState<"ai" | "ignore" | "manual" | null>(null);
     const [isEditing, setIsEditing] = useState(false);
@@ -46,36 +48,60 @@ export default function EmailItem({
         important: "bg-tag-important/20 text-tag-important",
     };
 
+    // ---------- APPROVE EMAIL (move to ready without sending) ----------
     const handleApproveModel = async () => {
-        if (!decision || decision === "ignore") return;
-
-        const finalText =
-            decision === "manual"
-                ? manualText
-                : aiReply || "";
-
-        if (!finalText.trim()) return;
-
+        if (!decision) return;
         setApproving(true);
 
         try {
-            const res = await fetch("/api/unread-emails", {
+            let finalText = "";
+
+            if (decision === "ignore") {
+                await fetch("/api/unread-emails", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ emailId: id, ignore: true }),
+                });
+                onUpdateEmail?.(id, { tag: "ready" });
+                alert("Marked as read");
+                return;
+            }
+
+            if (decision === "manual") finalText = manualText;
+
+            if (decision === "ai") {
+                const aiRes = await fetch("/api/ai-analyze-lead", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ category: "support", message: body }),
+                });
+                const data = await aiRes.json();
+                finalText = data.reply || "Thanks for reaching out!";
+                setEditText(finalText);
+                setManualText(finalText);
+            }
+
+            if (!finalText.trim()) {
+                alert("Empty reply, cannot approve");
+                return;
+            }
+
+            // فقط move به ready و ذخیره متن، ارسال نمی‌کنه
+            await fetch("/api/unread-emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
                 body: JSON.stringify({
                     emailId: id,
-                    subject: subject,
+                    subject,
+                    sender,
+                    body,
                     text: finalText,
-                    body: body,       // متن ایمیل اصلی
-                    sender: sender,   // ایمیل فرستنده اضافه شد
+                    category: "support",
                 }),
             });
 
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Approve failed");
-
+            onUpdateEmail?.(id, { manualReply: finalText, aiReply: finalText, tag: "ready" });
             alert("Moved to Ready!");
         } catch (err) {
             console.error(err);
@@ -85,45 +111,41 @@ export default function EmailItem({
         }
     };
 
-    // ---------- READY SAVE EDIT ----------
+    // ---------- SAVE EDIT (only save text, no send) ----------
     const handleSaveEdit = async () => {
         if (!editText.trim()) return;
-
         setSavingEdit(true);
+
         try {
             const res = await fetch("/api/ready-to-send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({
                     emailId: id,
-                    aiReply: editText,
                     manualReply: editText,
-                    saveOnly: true,
+                    aiReply: editText,
+                    saveOnly: true, // مهم: فقط ذخیره، ارسال نمی‌کنه
                 }),
-                credentials: "include",
             });
-
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Save failed");
 
-            alert("Saved!");
             setIsEditing(false);
+            onUpdateEmail?.(id, { manualReply: editText, aiReply: editText });
+            alert("Saved!");
         } catch (err) {
             console.error(err);
-            alert("Failed");
+            alert("Failed to save edit");
         } finally {
             setSavingEdit(false);
         }
     };
 
-    // ---------- FINAL SEND ----------
+    // ---------- FINAL SEND (only here send) ----------
     const handleFinalConfirm = async () => {
         setSending(true);
-
-        const finalReply =
-            isEditing ? editText :
-                decision === "manual" ? manualText :
-                    aiReply || "";
+        const finalReply = isEditing ? editText : decision === "manual" ? manualText : aiReply || "";
 
         try {
             const res = await fetch("/api/ready-to-send", {
@@ -132,16 +154,16 @@ export default function EmailItem({
                 credentials: "include",
                 body: JSON.stringify({
                     emailId: id,
-                    subject: subject,      // اضافه شد
-                    sender: sender,        // اضافه شد
-                    body: body,            // متن اصلی ایمیل
+                    subject,
+                    sender,
+                    body,
                     manualReply: finalReply,
                 }),
             });
-
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Send failed");
 
+            onUpdateEmail?.(id, { manualReply: finalReply, aiReply: finalReply, tag: "sent" });
             alert("Email sent!");
         } catch (err) {
             console.error(err);
@@ -151,10 +173,8 @@ export default function EmailItem({
         }
     };
 
-
     return (
         <div className="p-3 border border-border rounded-lg my-2 flex flex-col gap-2">
-            {/* HEADER */}
             <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-3">
@@ -162,13 +182,10 @@ export default function EmailItem({
                             <p className="font-semibold text-sm text-text">{subject}</p>
                             <p className="text-xs text-muted">{sender}</p>
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded ${tagMap[tag]}`}>
-                            {tag}
-                        </span>
+                        <span className={`text-xs px-2 py-1 rounded ${tagMap[tag]}`}>{tag}</span>
                     </div>
                 </div>
 
-                {/* ACTIONS */}
                 <div className="flex gap-1">
                     <button
                         onClick={onSelect}
@@ -177,7 +194,6 @@ export default function EmailItem({
                         <Eye size={14} />
                     </button>
 
-                    {/* UNREAD CHECK */}
                     {tag === "unread" && (
                         <button
                             onClick={handleApproveModel}
@@ -188,7 +204,6 @@ export default function EmailItem({
                         </button>
                     )}
 
-                    {/* READY EDIT */}
                     {tag === "ready" && (
                         <>
                             {!isEditing ? (
@@ -220,7 +235,6 @@ export default function EmailItem({
                 </div>
             </div>
 
-            {/* UNREAD OPTIONS */}
             {tag === "unread" && (
                 <div className="flex gap-2 mt-1">
                     <DecisionBtn label="AI Reply" active={decision === "ai"} onClick={() => setDecision("ai")} />
@@ -229,7 +243,6 @@ export default function EmailItem({
                 </div>
             )}
 
-            {/* MANUAL TEXT */}
             {tag === "unread" && decision === "manual" && (
                 <textarea
                     value={manualText}
@@ -239,7 +252,6 @@ export default function EmailItem({
                 />
             )}
 
-            {/* READY EDIT */}
             {tag === "ready" && isEditing && (
                 <textarea
                     value={editText}
@@ -255,8 +267,8 @@ function DecisionBtn({ label, active, onClick }: { label: string; active: boolea
     return (
         <button
             onClick={onClick}
-            className={`px-2 py-1 text-xs rounded-md border transition
-        ${active ? "border-primary text-primary bg-primary/10" : "border-border text-muted hover:border-primary"}`}
+            className={`px-2 py-1 text-xs rounded-md border transition ${active ? "border-primary text-primary bg-primary/10" : "border-border text-muted hover:border-primary"
+                }`}
         >
             {label}
         </button>

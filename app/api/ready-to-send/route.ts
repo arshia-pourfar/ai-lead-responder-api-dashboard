@@ -54,19 +54,20 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Email not found" }, { status: 404 });
         }
 
-        // ذخیره ادیت بدون ارسال
+        // ---------- ذخیره بدون ارسال ----------
         if (saveOnly) {
             await prisma.email.update({
                 where: { id: emailId },
                 data: {
-                    aiReply: aiReply ?? email.aiReply,
-                    manualReply: manualReply ?? email.manualReply,
+                    aiReply: aiReply !== undefined ? aiReply : email.aiReply,
+                    manualReply: manualReply !== undefined ? manualReply : email.manualReply,
                 },
             });
-            return NextResponse.json({ success: true, message: "Replies saved" });
+            // مهم: اگر saveOnly هست، همینجا پایان میدیم و ایمیل ارسال نمی‌شه
+            return NextResponse.json({ success: true, saved: true });
         }
 
-        // اگر saveOnly نبود → ارسال ایمیل
+        // ---------- ارسال ایمیل فقط وقتی saveOnly نیست ----------
         const replyText =
             manualReply && manualReply.trim() !== ""
                 ? manualReply
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, sent: true });
     } catch (err) {
         console.error(err);
         return NextResponse.json({ error: "Send failed" }, { status: 500 });

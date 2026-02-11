@@ -11,6 +11,7 @@ interface Email {
   sender: string;
   body: string;
   aiReply?: string;
+  manualReply?: string;
   tag?: "ready" | "unread" | "sent" | "important";
   sellScore?: number;
 }
@@ -25,6 +26,7 @@ export default function Dashboard() {
   // ایمیلی که برای مشاهده مودال انتخاب شده
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
 
+  // --- fetch initial emails ---
   useEffect(() => {
     const fetchAll = async () => {
       try {
@@ -49,6 +51,20 @@ export default function Dashboard() {
     fetchAll();
   }, []);
 
+  // --- تابع برای بروزرسانی ایمیل‌ها ---
+  const updateEmail = (id: string, updated: Partial<Email>) => {
+    const updateList = (list: Email[]) =>
+      list.map(e => (e.id === id ? { ...e, ...updated } : e));
+
+    setReadyEmails(prev => updateList(prev));
+    setUnreadEmails(prev => updateList(prev));
+    setSentEmails(prev => updateList(prev));
+    setSellEmails(prev => updateList(prev));
+
+    // آپدیت مودال اگر ایمیل انتخاب شده تغییر کرده
+    setSelectedEmail(prev => (prev && prev.id === id ? { ...prev, ...updated } : prev));
+  };
+
   if (loading) return <p className="p-4 text-sm">Loading...</p>;
 
   return (
@@ -69,24 +85,28 @@ export default function Dashboard() {
           emails={readyEmails}
           tag="ready"
           onSelectEmail={setSelectedEmail}
+          onUpdateEmail={updateEmail}
         />
         <SectionCard
           title="Unread Emails"
           emails={unreadEmails}
           tag="unread"
           onSelectEmail={setSelectedEmail}
+          onUpdateEmail={updateEmail}
         />
         <SectionCard
           title="Sent Emails"
           emails={sentEmails}
           tag="sent"
           onSelectEmail={setSelectedEmail}
+          onUpdateEmail={updateEmail}
         />
         <SectionCard
           title="Important / Sell"
           emails={sellEmails}
           tag="important"
           onSelectEmail={setSelectedEmail}
+          onUpdateEmail={updateEmail}
         />
       </div>
 
@@ -98,11 +118,11 @@ export default function Dashboard() {
             <p className="text-sm text-muted whitespace-pre-line">
               {selectedEmail.body || "No content"}
             </p>
-            {selectedEmail.aiReply && (
+            {(selectedEmail.aiReply || selectedEmail.manualReply) && (
               <div className="mt-4 border-t pt-2">
-                <p className="font-semibold text-sm">AI Reply:</p>
+                <p className="font-semibold text-sm">Reply:</p>
                 <p className="text-sm text-muted whitespace-pre-line">
-                  {selectedEmail.aiReply}
+                  {selectedEmail.manualReply || selectedEmail.aiReply}
                 </p>
               </div>
             )}
@@ -123,11 +143,13 @@ function SectionCard({
   title,
   emails,
   onSelectEmail,
+  onUpdateEmail,
 }: {
   title: string;
   tag: "ready" | "unread" | "sent" | "important";
   emails: Email[];
   onSelectEmail: (email: Email) => void;
+  onUpdateEmail: (id: string, updated: Partial<Email>) => void;
 }) {
   return (
     <Card
@@ -141,7 +163,7 @@ function SectionCard({
       }
     >
       {emails.length > 0 ? (
-        emails.map((email) => (
+        emails.map(email => (
           <EmailItem
             key={email.id}
             id={email.id}
@@ -149,8 +171,10 @@ function SectionCard({
             sender={email.sender || "unknown"}
             body={email.body || "No content"}
             aiReply={email.aiReply || ""}
+            manualReply={email.manualReply || ""}
             tag={email.tag ?? "ready"}
             onSelect={() => onSelectEmail(email)}
+            onUpdateEmail={onUpdateEmail} // ← اضافه شد
           />
         ))
       ) : (

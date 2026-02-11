@@ -1,4 +1,4 @@
-// pages/api/ai-analyze-lead.ts
+// pages/api/ai-analyze-lead/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeLead } from "@/lib/services/gemini";
 
