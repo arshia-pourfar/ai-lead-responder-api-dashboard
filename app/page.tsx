@@ -31,7 +31,7 @@ export default function Dashboard() {
         const [readyRes, sellRes, unreadRes, sentRes] = await Promise.all([
           fetch("/api/ready-to-send", { credentials: "include" }),
           fetch("/api/ready-to-sell", { credentials: "include" }),
-          fetch("/api/unread-emails", { credentials: "include" }),
+          fetch("/api/unread-emails?limit=10", { credentials: "include" }),
           fetch("/api/sent-emails", { credentials: "include" }),
         ]);
 

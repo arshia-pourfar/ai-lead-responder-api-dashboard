@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import React from "react";
 import {
     LayoutDashboard,
     Send,
@@ -11,8 +12,15 @@ import {
     Settings,
 } from "lucide-react";
 
-const items = [
+interface SidebarItem {
+    href: string;
+    label: string;
+    icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+}
+
+const items: SidebarItem[] = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/unread-emails", label: "Unread Emails", icon: Mail }, // اضافه شد
     { href: "/ready-to-send", label: "Ready To Send", icon: Send },
     { href: "/ready-to-sell", label: "Ready To Sell", icon: ShoppingBag },
     { href: "/analytics", label: "Analytics", icon: BarChart3 },
@@ -20,6 +28,32 @@ const items = [
 
 export default function Sidebar() {
     const path = usePathname();
+
+    const renderLink = (
+        href: string,
+        label: string,
+        Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
+    ) => {
+        const active = path === href;
+        return (
+            <Link
+                key={href}
+                href={href}
+                className={`
+                    flex items-center gap-3 px-3 py-2.5 rounded-xl
+                    transition-all duration-150
+                    border
+                    ${active
+                        ? "bg-primary/10 text-primary border-primary/20 shadow-sm"
+                        : "border-transparent text-muted hover:bg-border/40 hover:text-text"
+                    }
+                `}
+            >
+                <Icon className="size-4.5" />
+                <span className="text-sm font-medium">{label}</span>
+            </Link>
+        );
+    };
 
     return (
         <aside className="w-64 bg-card border-r border-border flex flex-col p-4">
@@ -33,58 +67,13 @@ export default function Sidebar() {
 
             {/* NAV */}
             <nav className="flex flex-col gap-1">
-                {items.map((item) => {
-                    const Icon = item.icon;
-                    const active = path === item.href;
-
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={`
-                                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                                transition-all duration-150
-                                border
-                                ${active
-                                    ? "bg-primary/10 text-primary border-primary/20 shadow-sm"
-                                    : "border-transparent text-muted hover:bg-border/40 hover:text-text"
-                                }
-                            `}
-                        >
-                            <Icon size={18} />
-                            <span className="text-sm font-medium">{item.label}</span>
-                        </Link>
-                    );
-                })}
+                {items.map((item) => renderLink(item.href, item.label, item.icon))}
             </nav>
 
-            {/* SETTINGS */}
+            {/* SETTINGS + FOOTER */}
             <div className="mt-auto">
-                {(() => {
-                    const active = path === "/settings";
-                    return (
-                        <Link
-                            href="/settings"
-                            className={`
-                                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                                transition-all duration-150
-                                border
-                                ${active
-                                    ? "bg-primary/10 text-primary border-primary/20 shadow-sm"
-                                    : "border-transparent text-muted hover:bg-border/40 hover:text-text"
-                                }
-                            `}
-                        >
-                            <Settings size={18} />
-                            <span className="text-sm font-medium">Settings</span>
-                        </Link>
-                    );
-                })()}
-
-                {/* FOOTER */}
-                <div className="pt-6 text-xs text-muted px-2">
-                    v1.0 AI Panel
-                </div>
+                {renderLink("/settings", "Settings", Settings)}
+                <div className="pt-6 text-xs text-muted px-2">v1.0 AI Panel</div>
             </div>
         </aside>
     );

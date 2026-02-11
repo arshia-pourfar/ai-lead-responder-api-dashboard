@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
             emails.map(e => ({
                 id: e.id,
                 subject: e.subject,
-                sender: e.account?.email ?? "unknown",
+                sender: e.senderEmail ?? "unknown",
                 body: e.body,
                 aiReply: e.aiReply,
                 accountId: e.accountId,
