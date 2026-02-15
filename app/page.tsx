@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import EmailItem from "@/components/email/EmailItem";
 import PageHeader from "@/components/ui/Header";
 import Card from "@/components/ui/Card";
+import SuperLoading from "@/components/ui/SuperLoading";
 
 interface Email {
   id: string;
@@ -33,13 +34,14 @@ export default function Dashboard() {
         const [readyRes, sellRes, unreadRes, sentRes] = await Promise.all([
           fetch("/api/ready-to-send", { credentials: "include" }),
           fetch("/api/ready-to-sell", { credentials: "include" }),
-          fetch("/api/unread-emails?limit=10", { credentials: "include" }),
+          fetch("/api/unread-emails?limit=50", { credentials: "include" }),
           fetch("/api/sent-emails", { credentials: "include" }),
         ]);
 
+        const unreadData = await unreadRes.json();
         setReadyEmails(await readyRes.json());
         setSellEmails(await sellRes.json());
-        setUnreadEmails(await unreadRes.json());
+        setUnreadEmails(Array.isArray(unreadData?.emails) ? unreadData.emails : []);
         setSentEmails(await sentRes.json());
       } catch (err) {
         console.error(err);
@@ -53,6 +55,29 @@ export default function Dashboard() {
 
   // --- تابع برای بروزرسانی ایمیل‌ها ---
   const updateEmail = (id: string, updated: Partial<Email>) => {
+    if (updated.tag === "sent") {
+      let movedEmail: Email | undefined;
+
+      setReadyEmails(prev => {
+        const found = prev.find(email => email.id === id);
+        if (found) {
+          movedEmail = { ...found, ...updated, tag: "sent" };
+        }
+        return prev.filter(email => email.id !== id);
+      });
+
+      setSentEmails(prev => {
+        if (!movedEmail) return prev;
+        if (prev.some(email => email.id === id)) {
+          return prev.map(email => (email.id === id ? { ...email, ...movedEmail } : email));
+        }
+        return [movedEmail, ...prev];
+      });
+
+      setSelectedEmail(prev => (prev && prev.id === id ? { ...prev, ...updated } : prev));
+      return;
+    }
+
     const updateList = (list: Email[]) =>
       list.map(e => (e.id === id ? { ...e, ...updated } : e));
 
@@ -61,11 +86,24 @@ export default function Dashboard() {
     setSentEmails(prev => updateList(prev));
     setSellEmails(prev => updateList(prev));
 
-    // آپدیت مودال اگر ایمیل انتخاب شده تغییر کرده
     setSelectedEmail(prev => (prev && prev.id === id ? { ...prev, ...updated } : prev));
   };
 
-  if (loading) return <p className="p-4 text-sm">Loading...</p>;
+  const removeUnreadEmail = (id: string) => {
+    setUnreadEmails(prev => prev.filter(email => email.id !== id));
+    setSelectedEmail(prev => (prev && prev.id === id ? null : prev));
+  };
+
+  const moveUnreadToReady = (email: Email) => {
+    setReadyEmails(prev => {
+      if (prev.some(item => item.id === email.id)) return prev;
+      return [email, ...prev];
+    });
+  };
+
+  if (loading) {
+    return <SuperLoading variant="dashboard" label="Syncing dashboard" />;
+  }
 
   return (
     <div className="h-full flex flex-col gap-3 overflow-auto relative">
@@ -93,6 +131,8 @@ export default function Dashboard() {
           tag="unread"
           onSelectEmail={setSelectedEmail}
           onUpdateEmail={updateEmail}
+          onRemoveEmail={removeUnreadEmail}
+          onMoveToReady={moveUnreadToReady}
         />
         <SectionCard
           title="Sent Emails"
@@ -141,15 +181,20 @@ export default function Dashboard() {
 
 function SectionCard({
   title,
+  tag,
   emails,
   onSelectEmail,
   onUpdateEmail,
+  onRemoveEmail,
+  onMoveToReady,
 }: {
   title: string;
   tag: "ready" | "unread" | "sent" | "important";
   emails: Email[];
   onSelectEmail: (email: Email) => void;
   onUpdateEmail: (id: string, updated: Partial<Email>) => void;
+  onRemoveEmail?: (id: string) => void;
+  onMoveToReady?: (email: Email) => void;
 }) {
   return (
     <Card
@@ -172,9 +217,11 @@ function SectionCard({
             body={email.body || "No content"}
             aiReply={email.aiReply || ""}
             manualReply={email.manualReply || ""}
-            tag={email.tag ?? "ready"}
+            tag={email.tag ?? tag}
             onSelect={() => onSelectEmail(email)}
-            onUpdateEmail={onUpdateEmail} // ← اضافه شد
+            onUpdateEmail={onUpdateEmail}
+            onRemoveEmail={tag === "unread" ? onRemoveEmail : undefined}
+            onMoveToReady={tag === "unread" ? onMoveToReady : undefined}
           />
         ))
       ) : (
@@ -183,3 +230,4 @@ function SectionCard({
     </Card>
   );
 }
+

@@ -15,6 +15,16 @@ interface EmailProps {
     tag: TagType;
     onSelect?: () => void;
     onUpdateEmail?: (id: string, updated: Partial<EmailProps>) => void;
+    onRemoveEmail?: (id: string) => void;
+    onMoveToReady?: (email: {
+        id: string;
+        subject: string;
+        sender: string;
+        body: string;
+        aiReply: string;
+        manualReply: string;
+        tag: "ready";
+    }) => void;
 }
 
 export default function EmailItem({
@@ -27,6 +37,8 @@ export default function EmailItem({
     tag,
     onSelect,
     onUpdateEmail,
+    onRemoveEmail,
+    onMoveToReady,
 }: EmailProps) {
     const [decision, setDecision] = useState<"ai" | "ignore" | "manual" | null>(null);
     const [isEditing, setIsEditing] = useState(false);
@@ -57,12 +69,17 @@ export default function EmailItem({
             let finalText = "";
 
             if (decision === "ignore") {
-                await fetch("/api/unread-emails", {
+                const res = await fetch("/api/unread-emails", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
+                    credentials: "include",
                     body: JSON.stringify({ emailId: id, ignore: true }),
                 });
-                onUpdateEmail?.(id, { tag: "ready" });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => null);
+                    throw new Error(data?.error || "Failed to ignore email");
+                }
+                onRemoveEmail?.(id);
                 alert("Marked as read");
                 return;
             }
@@ -87,7 +104,7 @@ export default function EmailItem({
             }
 
             // فقط move به ready و ذخیره متن، ارسال نمی‌کنه
-            await fetch("/api/unread-emails", {
+            const approveRes = await fetch("/api/unread-emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
@@ -100,8 +117,15 @@ export default function EmailItem({
                     category: "support",
                 }),
             });
+            const approveData = await approveRes.json().catch(() => null);
+            if (!approveRes.ok) {
+                throw new Error(approveData?.error || "Failed to approve email");
+            }
 
-            onUpdateEmail?.(id, { manualReply: finalText, aiReply: finalText, tag: "ready" });
+            if (approveData?.readyEmail) {
+                onMoveToReady?.(approveData.readyEmail);
+            }
+            onRemoveEmail?.(id);
             alert("Moved to Ready!");
         } catch (err) {
             console.error(err);
@@ -145,9 +169,13 @@ export default function EmailItem({
     // ---------- FINAL SEND (only here send) ----------
     const handleFinalConfirm = async () => {
         setSending(true);
-        const finalReply = isEditing ? editText : decision === "manual" ? manualText : aiReply || "";
+        const finalReply = (isEditing ? editText : manualText || aiReply || "").trim();
 
         try {
+            if (!finalReply) {
+                throw new Error("Reply text cannot be empty");
+            }
+
             const res = await fetch("/api/ready-to-send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -167,7 +195,8 @@ export default function EmailItem({
             alert("Email sent!");
         } catch (err) {
             console.error(err);
-            alert("Failed to send email");
+            const message = err instanceof Error ? err.message : "Failed to send email";
+            alert(message);
         } finally {
             setSending(false);
         }

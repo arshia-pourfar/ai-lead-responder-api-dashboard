@@ -23,6 +23,7 @@ const imapConfig: ImapConfig = {
 };
 
 export interface Email {
+    uid: number;
     from: string;
     name?: string;
     subject: string;
@@ -35,9 +36,49 @@ type ParsedEmail = Awaited<ReturnType<typeof simpleParser>>;
 // interface ساده برای msg
 interface ImapMessage {
     on(event: "body", callback: (stream: Readable) => void): void;
+    once(event: "attributes", callback: (attrs: FetchMessageAttributes) => void): void;
 }
 
-async function parseEmail(stream: Readable): Promise<Email> {
+interface FetchMessageAttributes {
+    uid?: number;
+}
+
+interface ImapFetchRequest {
+    on(event: "message", callback: (msg: ImapMessage, seqno: number) => void): void;
+    once(event: "end" | "error", callback: (error?: Error) => void): void;
+}
+
+type ImapClient = InstanceType<typeof Imap>;
+export interface PaginatedUnreadResult {
+    emails: Email[];
+    total: number;
+}
+
+function openInbox(imap: ImapClient): Promise<void> {
+    return new Promise((resolve, reject) => {
+        imap.openBox("INBOX", false, (err: Error | null) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve();
+        });
+    });
+}
+
+function searchUnseen(imap: ImapClient): Promise<number[]> {
+    return new Promise((resolve, reject) => {
+        imap.search(["UNSEEN"], (err: Error | null, results?: number[]) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(results ?? []);
+        });
+    });
+}
+
+async function parseEmailContent(stream: Readable): Promise<Omit<Email, "uid">> {
     const parsed: ParsedEmail = await simpleParser(stream);
     return {
         from: parsed.from?.value?.[0]?.address || "",
@@ -47,40 +88,125 @@ async function parseEmail(stream: Readable): Promise<Email> {
     };
 }
 
+function fetchEmailsByUids(imap: ImapClient, uids: number[]): Promise<Email[]> {
+    return new Promise((resolve, reject) => {
+        const selected = Array.from(
+            new Set(uids.filter((uid) => Number.isFinite(uid) && uid > 0))
+        );
+
+        if (selected.length === 0) {
+            resolve([]);
+            return;
+        }
+
+        const parsePromises: Promise<Email>[] = [];
+        const fetcher = imap.fetch(selected, { bodies: "" }) as ImapFetchRequest;
+
+        fetcher.on("message", (msg: ImapMessage) => {
+            const promise = new Promise<Email>((res, rej) => {
+                const uidPromise = new Promise<number>((resolveUid) => {
+                    msg.once("attributes", (attrs: FetchMessageAttributes) => {
+                        resolveUid(attrs.uid ?? 0);
+                    });
+                });
+
+                msg.on("body", async (stream: Readable) => {
+                    try {
+                        const [uid, parsed] = await Promise.all([
+                            uidPromise,
+                            parseEmailContent(stream),
+                        ]);
+                        const email = { ...parsed, uid };
+                        res(email);
+                    } catch (error) {
+                        rej(error);
+                    }
+                });
+            });
+
+            parsePromises.push(promise);
+        });
+
+        fetcher.once("end", async () => {
+            try {
+                const parsed = await Promise.all(parsePromises);
+                resolve(parsed.sort((a, b) => b.uid - a.uid));
+            } catch (error) {
+                reject(error);
+            }
+        });
+
+        fetcher.once("error", (error?: Error) => {
+            reject(error ?? new Error("IMAP fetch error"));
+        });
+    });
+}
+
 // خواندن یک ایمیل
 export async function readOneEmail(): Promise<Email | null> {
     return new Promise((resolve, reject) => {
         const imap = new Imap(imapConfig);
 
-        imap.once("ready", () => {
-            imap.openBox("INBOX", false, (err: Error | null) => {
-                if (err) return reject(err);
+        imap.once("ready", async () => {
+            try {
+                await openInbox(imap);
+                const unseen = await searchUnseen(imap);
+                if (unseen.length === 0) {
+                    imap.end();
+                    resolve(null);
+                    return;
+                }
 
-                imap.search(["UNSEEN"], (err: Error | null, results?: number[]) => {
-                    if (err || !results || results.length === 0) {
-                        imap.end();
-                        return resolve(null);
-                    }
+                const latestUid = unseen[unseen.length - 1];
+                const fetcher = imap.fetch(latestUid, { bodies: "" }) as ImapFetchRequest;
+                let email: Email | null = null;
 
-                    const latest = results[results.length - 1];
-                    const f = imap.fetch(latest, { bodies: "" });
-
-                    f.on("message", (msg: ImapMessage) => {
-                        msg.on("body", (stream: Readable) => {
-                            parseEmail(stream)
-                                .then((email) => {
-                                    imap.addFlags(latest, "\\Seen", () => {
-                                        imap.end();
-                                        resolve(email);
-                                    });
-                                })
-                                .catch(reject);
+                fetcher.on("message", (msg: ImapMessage) => {
+                    const uidPromise = new Promise<number>((resolveUid) => {
+                        msg.once("attributes", (attrs: FetchMessageAttributes) => {
+                            resolveUid(attrs.uid ?? latestUid);
                         });
                     });
 
-                    f.once("error", reject);
+                    msg.on("body", async (stream: Readable) => {
+                        try {
+                            const [uid, parsed] = await Promise.all([
+                                uidPromise,
+                                parseEmailContent(stream),
+                            ]);
+                            email = { ...parsed, uid };
+                        } catch (error) {
+                            reject(error);
+                        }
+                    });
                 });
-            });
+
+                fetcher.once("end", () => {
+                    if (!email) {
+                        imap.end();
+                        resolve(null);
+                        return;
+                    }
+
+                    imap.addFlags(latestUid, "\\Seen", (flagErr: Error | null) => {
+                        if (flagErr) {
+                            imap.end();
+                            reject(flagErr);
+                            return;
+                        }
+                        imap.end();
+                        resolve(email);
+                    });
+                });
+
+                fetcher.once("error", (error?: Error) => {
+                    imap.end();
+                    reject(error ?? new Error("IMAP fetch error"));
+                });
+            } catch (error) {
+                imap.end();
+                reject(error);
+            }
         });
 
         imap.once("error", reject);
@@ -88,59 +214,74 @@ export async function readOneEmail(): Promise<Email | null> {
     });
 }
 
-// خواندن چند ایمیل خوانده نشده (جدیدترین یا همه)
-export async function readUnreadEmails(limit?: number): Promise<Email[]> {
+export async function markEmailAsSeenByUid(uid: number): Promise<void> {
     return new Promise((resolve, reject) => {
         const imap = new Imap(imapConfig);
 
-        imap.once("ready", () => {
-            imap.openBox("INBOX", false, (err: Error | null) => {
-                if (err) return reject(err);
-
-                imap.search(["UNSEEN"], (err: Error | null, results?: number[]) => {
-                    if (err || !results || results.length === 0) {
-                        imap.end();
-                        return resolve([]);
+        imap.once("ready", async () => {
+            try {
+                await openInbox(imap);
+                imap.addFlags(uid, "\\Seen", (err: Error | null) => {
+                    imap.end();
+                    if (err) {
+                        reject(err);
+                        return;
                     }
-
-                    // محدود کردن تعداد اگر limit داده شده باشه
-                    const selected = limit ? results.slice(-limit) : results;
-
-                    const parsePromises: Promise<Email>[] = [];
-                    const f = imap.fetch(selected, { bodies: "" });
-
-                    f.on("message", (msg: ImapMessage, _seqno: number) => {
-                        const p = new Promise<Email>((res, rej) => {
-                            msg.on("body", (stream: Readable) => {
-                                parseEmail(stream)
-                                    .then((email) => {
-                                        // بعد از خواندن، ایمیل را به حالت خوانده شده علامت می‌زنیم
-                                        const lastMsg = Array.isArray(selected) ? selected[selected.length - 1] : selected;
-                                        imap.addFlags(lastMsg, "\\Seen", () => res(email));
-                                    })
-                                    .catch(rej);
-                            });
-                        });
-
-                        parsePromises.push(p);
-                    });
-
-                    f.once("end", async () => {
-                        try {
-                            const emails = await Promise.all(parsePromises);
-                            imap.end();
-                            resolve(emails);
-                        } catch (e) {
-                            reject(e);
-                        }
-                    });
-
-                    f.once("error", reject);
+                    resolve();
                 });
-            });
+            } catch (error) {
+                imap.end();
+                reject(error);
+            }
         });
 
         imap.once("error", reject);
         imap.connect();
     });
+}
+
+export async function readUnreadEmailsPaginated(limit: number, offset: number): Promise<PaginatedUnreadResult> {
+    return new Promise((resolve, reject) => {
+        const imap = new Imap(imapConfig);
+
+        imap.once("ready", async () => {
+            try {
+                await openInbox(imap);
+                const unseen = (await searchUnseen(imap)).sort((a, b) => b - a);
+                const total = unseen.length;
+
+                if (total === 0) {
+                    imap.end();
+                    resolve({ emails: [], total: 0 });
+                    return;
+                }
+
+                const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 50;
+                const safeOffset = Number.isFinite(offset) && offset >= 0 ? Math.floor(offset) : 0;
+                const selectedUids = unseen.slice(safeOffset, safeOffset + safeLimit);
+
+                if (selectedUids.length === 0) {
+                    imap.end();
+                    resolve({ emails: [], total });
+                    return;
+                }
+
+                const emails = await fetchEmailsByUids(imap, selectedUids);
+                imap.end();
+                resolve({ emails, total });
+            } catch (error) {
+                imap.end();
+                reject(error);
+            }
+        });
+
+        imap.once("error", reject);
+        imap.connect();
+    });
+}
+
+// خواندن همه ایمیل‌های خوانده نشده
+export async function readUnreadEmails(): Promise<Email[]> {
+    const result = await readUnreadEmailsPaginated(Number.MAX_SAFE_INTEGER, 0);
+    return result.emails;
 }

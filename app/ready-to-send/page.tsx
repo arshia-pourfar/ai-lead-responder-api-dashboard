@@ -6,6 +6,7 @@ import EmailItem from "@/components/email/EmailItem";
 import Select from "@/components/ui/Select";
 import Stat from "@/components/ui/Stat";
 import PageHeader from "@/components/ui/Header";
+import SuperLoading from "@/components/ui/SuperLoading";
 
 interface Email {
   id: string;
@@ -13,6 +14,8 @@ interface Email {
   sender: string;
   body?: string;
   aiReply?: string;
+  manualReply?: string;
+  tag?: "ready" | "sent" | "unread" | "important";
 }
 
 export default function ReadyToSendPage() {
@@ -40,7 +43,18 @@ export default function ReadyToSendPage() {
     fetchEmails();
   }, []);
 
-  if (loading) return <p>Loading...</p>;
+  const updateEmail = (id: string, updated: Partial<Email>) => {
+    if (updated.tag === "sent") {
+      setEmails((prev) => prev.filter((email) => email.id !== id));
+      return;
+    }
+
+    setEmails((prev) =>
+      prev.map((email) => (email.id === id ? { ...email, ...updated } : email))
+    );
+  };
+
+  if (loading) return <SuperLoading variant="list" label="Loading ready emails" />;
 
   return (
     <div className="h-full flex flex-col gap-4 overflow-auto">
@@ -87,8 +101,10 @@ export default function ReadyToSendPage() {
             sender={email.sender}
             body={email.body || ""}
             aiReply={email.aiReply || ""}
+            manualReply={email.manualReply || ""}
             tag="ready"
             onSelect={() => setSelectedEmail(email)} // وصل شد
+            onUpdateEmail={updateEmail}
           />
         ))}
         {emails.length === 0 && <p className="text-xs text-muted">No emails found</p>}

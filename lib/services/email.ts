@@ -13,14 +13,43 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+export interface SendAutoReplyResult {
+    success: boolean;
+    error?: string;
+}
 
-export async function sendAutoReply(
+function isValidEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isAutoEmailEnabled(): boolean {
+    const value = (process.env.AUTO_EMAIL || "").toLowerCase().trim();
+    return value === "true" || value === "1" || value === "yes";
+}
+
+export async function sendAutoReplyDetailed(
     email: string,
     reply: string,
     category: string
-): Promise<boolean> {
-    if (!email) return false;
-    if (process.env.AUTO_EMAIL !== "true") return false;
+): Promise<SendAutoReplyResult> {
+    const recipient = (email || "").trim();
+    const replyText = (reply || "").trim();
+
+    if (!recipient || !isValidEmail(recipient)) {
+        return { success: false, error: "Recipient email is missing or invalid" };
+    }
+
+    if (!replyText) {
+        return { success: false, error: "Reply text is empty" };
+    }
+
+    if (!isAutoEmailEnabled()) {
+        return { success: false, error: "AUTO_EMAIL is disabled" };
+    }
+
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        return { success: false, error: "EMAIL_USER or EMAIL_PASS is missing" };
+    }
 
     let subject = "Thanks for contacting us";
     if (category === "support") subject = "Support request received";
@@ -30,14 +59,24 @@ export async function sendAutoReply(
     try {
         await transporter.sendMail({
             from: `"Support Team" <${process.env.EMAIL_USER}>`,
-            to: email,
+            to: recipient,
             subject,
-            text: reply,
-            html: `<p>${reply}</p>`,
+            text: replyText,
+            html: `<p>${replyText}</p>`,
         });
-        return true;
+        return { success: true };
     } catch (err) {
         console.error("Email send error:", err);
-        return false;
+        const message = err instanceof Error ? err.message : "SMTP send failed";
+        return { success: false, error: `SMTP send failed: ${message}` };
     }
+}
+
+export async function sendAutoReply(
+    email: string,
+    reply: string,
+    category: string
+): Promise<boolean> {
+    const result = await sendAutoReplyDetailed(email, reply, category);
+    return result.success;
 }

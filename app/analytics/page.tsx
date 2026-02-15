@@ -16,6 +16,7 @@ import {
 import PageHeader from "@/components/ui/Header";
 import EmailItem from "@/components/email/EmailItem";
 import { Check, DollarSign } from "lucide-react";
+import SuperLoading from "@/components/ui/SuperLoading";
 
 interface SoldEmail {
     id: string;
@@ -72,7 +73,7 @@ export default function AnalysisPage() {
         fetchData();
     }, []);
 
-    if (loading) return <p>Loading...</p>;
+    if (loading) return <SuperLoading variant="analytics" label="Preparing analytics" />;
 
     const totalSales = soldEmails.reduce((acc, email) => acc + (email.sellScore || 0) * 50, 0);
 

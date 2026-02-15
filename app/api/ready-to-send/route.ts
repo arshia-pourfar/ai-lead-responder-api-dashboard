@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { authGuard } from "@/lib/middleware/authMiddleware";
-import { sendAutoReply } from "@/lib/services/email";
+import { sendAutoReplyDetailed } from "@/lib/services/email";
+
+function isValidEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
@@ -21,6 +25,7 @@ export async function GET(req: NextRequest) {
                 subject: e.subject,
                 body: e.body,
                 aiReply: e.aiReply,
+                manualReply: e.manualReply,
                 sender: e.senderEmail ?? "unknown",
                 tag: "ready" as const,
             }))
@@ -42,7 +47,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "emailId required" }, { status: 400 });
     }
 
-    const { emailId, manualReply, aiReply, saveOnly } = body;
+    const { emailId, manualReply, aiReply, saveOnly, sender } = body;
 
     try {
         const email = await prisma.email.findFirst({
@@ -73,16 +78,32 @@ export async function POST(req: NextRequest) {
                 ? manualReply
                 : aiReply ?? email.aiReply ?? "";
 
-        const targetEmail = email.senderEmail;
+        const targetEmail =
+            typeof email.senderEmail === "string" && email.senderEmail.trim() !== ""
+                ? email.senderEmail.trim()
+                : typeof sender === "string"
+                    ? sender.trim()
+                    : "";
 
-        const sent = await sendAutoReply(
-            targetEmail || "",
+        if (!isValidEmail(targetEmail)) {
+            return NextResponse.json({ error: "Recipient email is missing or invalid" }, { status: 400 });
+        }
+
+        if (!replyText.trim()) {
+            return NextResponse.json({ error: "Reply text cannot be empty" }, { status: 400 });
+        }
+
+        const sendResult = await sendAutoReplyDetailed(
+            targetEmail,
             replyText,
             email.category || "support"
         );
 
-        if (!sent) {
-            return NextResponse.json({ error: "Email send failed" }, { status: 500 });
+        if (!sendResult.success) {
+            return NextResponse.json(
+                { error: sendResult.error || "Email send failed" },
+                { status: 500 }
+            );
         }
 
         // آپدیت دیتابیس بعد از ارسال
@@ -94,6 +115,7 @@ export async function POST(req: NextRequest) {
                 readyToSend: false,
                 manualReply: manualReply || replyText,
                 aiReply: aiReply || replyText,
+                senderEmail: targetEmail,
             },
         });
 

@@ -6,6 +6,7 @@ import EmailItem from "@/components/email/EmailItem";
 import Select from "@/components/ui/Select";
 import Stat from "@/components/ui/Stat";
 import PageHeader from "@/components/ui/Header";
+import SuperLoading from "@/components/ui/SuperLoading";
 
 interface Email {
   id: string;
@@ -41,7 +42,7 @@ export default function ReadyToSellPage() {
     fetchEmails();
   }, []);
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) return <SuperLoading variant="list" label="Loading leads" />;
 
   return (
     <div className="h-full flex flex-col gap-4 overflow-auto">
