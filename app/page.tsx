@@ -23,37 +23,101 @@ export default function Dashboard() {
   const [unreadEmails, setUnreadEmails] = useState<Email[]>([]);
   const [sentEmails, setSentEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // ایمیلی که برای مشاهده مودال انتخاب شده
+  const [error, setError] = useState<string | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
 
-  // --- fetch initial emails ---
   useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [readyRes, sellRes, unreadRes, sentRes] = await Promise.all([
-          fetch("/api/ready-to-send", { credentials: "include" }),
-          fetch("/api/ready-to-sell", { credentials: "include" }),
-          fetch("/api/unread-emails?limit=50", { credentials: "include" }),
-          fetch("/api/sent-emails", { credentials: "include" }),
-        ]);
+    let cancelled = false;
 
-        const unreadData = await unreadRes.json();
-        setReadyEmails(await readyRes.json());
-        setSellEmails(await sellRes.json());
-        setUnreadEmails(Array.isArray(unreadData?.emails) ? unreadData.emails : []);
-        setSentEmails(await sentRes.json());
-      } catch (err) {
-        console.error(err);
+    const fetchJsonSafe = async <T,>(
+      url: string,
+      fallback: T,
+      timeoutMs = 12_000
+    ): Promise<{ data: T; ok: boolean; unauthorized: boolean }> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const res = await fetch(url, {
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          return { data: fallback, ok: false, unauthorized: res.status === 401 };
+        }
+
+        return { data: (await res.json()) as T, ok: true, unauthorized: false };
+      } catch {
+        return { data: fallback, ok: false, unauthorized: false };
       } finally {
-        setLoading(false);
+        clearTimeout(timeoutId);
       }
     };
 
-    fetchAll();
+    const fetchAll = async () => {
+      const coreSectionsPromise = Promise.all([
+        fetchJsonSafe<Email[]>("/api/ready-to-send", []),
+        fetchJsonSafe<Email[]>("/api/ready-to-sell", []),
+        fetchJsonSafe<Email[]>("/api/sent-emails", []),
+      ]);
+
+      const unreadPromise = fetchJsonSafe<{ emails?: Email[]; total?: number }>(
+        "/api/unread-emails?limit=12&offset=0",
+        { emails: [] },
+        8_000
+      );
+
+      const [readyResult, sellResult, sentResult] = await coreSectionsPromise;
+      if (cancelled) return;
+
+      setReadyEmails(Array.isArray(readyResult.data) ? readyResult.data : []);
+      setSellEmails(Array.isArray(sellResult.data) ? sellResult.data : []);
+      setSentEmails(Array.isArray(sentResult.data) ? sentResult.data : []);
+
+      const failedCoreSections = [
+        readyResult.ok ? null : "ready",
+        sellResult.ok ? null : "sell",
+        sentResult.ok ? null : "sent",
+      ].filter(Boolean);
+
+      if (readyResult.unauthorized || sellResult.unauthorized || sentResult.unauthorized) {
+        setError("Session expired. Please login again.");
+      } else if (failedCoreSections.length > 0) {
+        setError("Could not load dashboard sections completely.");
+      } else {
+        setError(null);
+      }
+
+      setLoading(false);
+
+      const unreadResult = await unreadPromise;
+      if (cancelled) return;
+
+      setUnreadEmails(Array.isArray(unreadResult.data?.emails) ? unreadResult.data.emails : []);
+
+      if (!unreadResult.ok) {
+        setError((prev) => {
+          if (prev) return prev;
+          if (unreadResult.unauthorized) return "Session expired. Please login again.";
+          return "Unread emails are temporarily unavailable.";
+        });
+      }
+    };
+
+    fetchAll().catch(() => {
+      if (!cancelled) {
+        setError("Could not load dashboard sections completely.");
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // --- تابع برای بروزرسانی ایمیل‌ها ---
   const updateEmail = (id: string, updated: Partial<Email>) => {
     if (updated.tag === "sent") {
       let movedEmail: Email | undefined;
@@ -117,6 +181,7 @@ export default function Dashboard() {
           { label: "Sell", value: sellEmails.length },
         ]}
       />
+      {error && <p className="text-xs text-danger">{error}</p>}
       <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 overflow-hidden">
         <SectionCard
           title="Ready To Send"
@@ -150,7 +215,6 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* FULL PAGE MODAL */}
       {selectedEmail && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-bg w-full h-full max-w-5xl max-h-[90vh] overflow-auto p-6 rounded-xl">
@@ -230,4 +294,3 @@ function SectionCard({
     </Card>
   );
 }
-

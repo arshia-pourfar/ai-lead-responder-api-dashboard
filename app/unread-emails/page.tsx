@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Check, Sparkles } from "lucide-react";
 import EmailItem from "@/components/email/EmailItem";
 import Select from "@/components/ui/Select";
 import Stat from "@/components/ui/Stat";
 import PageHeader from "@/components/ui/Header";
 import SuperLoading from "@/components/ui/SuperLoading";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
+import { filterEmailsByQuery } from "@/lib/utils/filterEmails";
 
 interface Email {
     id: string;
@@ -23,6 +25,40 @@ interface UnreadEmailsApiResponse {
     total: number;
 }
 
+const CATEGORY_OPTIONS = [
+    { label: "Unread", value: "unread" },
+    { label: "Ready", value: "ready" },
+    { label: "Important", value: "important" },
+    { label: "Sent", value: "sent" },
+    { label: "All", value: "all" },
+];
+
+const CONFIDENCE_OPTIONS = [
+    { label: "All", value: "all" },
+    { label: "High", value: "high" },
+    { label: "Medium", value: "medium" },
+    { label: "Low", value: "low" },
+];
+
+const DATE_OPTIONS = [
+    { label: "All Time", value: "all" },
+    { label: "Today", value: "today" },
+    { label: "Last 7 Days", value: "7d" },
+    { label: "Last 30 Days", value: "30d" },
+    { label: "Last 90 Days", value: "90d" },
+];
+
+const SORT_OPTIONS = [
+    { label: "Newest", value: "newest" },
+    { label: "Oldest", value: "oldest" },
+    { label: "Subject A-Z", value: "subject_asc" },
+    { label: "Subject Z-A", value: "subject_desc" },
+    { label: "Sender A-Z", value: "sender_asc" },
+    { label: "Sender Z-A", value: "sender_desc" },
+    { label: "Confidence High-Low", value: "confidence_desc" },
+    { label: "Confidence Low-High", value: "confidence_asc" },
+];
+
 export default function UnreadEmailsPage() {
     const [emails, setEmails] = useState<Email[]>([]);
     const [total, setTotal] = useState(0);
@@ -30,19 +66,35 @@ export default function UnreadEmailsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
+    const [category, setCategory] = useState("unread");
+    const [confidence, setConfidence] = useState("all");
+    const [date, setDate] = useState("all");
+    const [sort, setSort] = useState("newest");
     const PER_PAGE = 50;
 
     // ایمیل انتخاب‌شده برای نمایش مودال
     const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
 
     useEffect(() => {
+        const controller = new AbortController();
+
         const fetchEmails = async () => {
             const offset = (currentPage - 1) * PER_PAGE;
             try {
                 setLoading(true);
                 setError(null);
-                const res = await fetch(`/api/unread-emails?limit=${PER_PAGE}&offset=${offset}`, {
+                const params = new URLSearchParams({
+                    limit: String(PER_PAGE),
+                    offset: String(offset),
+                    category,
+                    confidence,
+                    date,
+                    sort,
+                });
+                const res = await fetch(`/api/unread-emails?${params.toString()}`, {
                     credentials: "include",
+                    cache: "no-store",
+                    signal: controller.signal,
                 });
                 const data: UnreadEmailsApiResponse = await res.json();
                 if (!res.ok) {
@@ -51,34 +103,42 @@ export default function UnreadEmailsPage() {
                 setEmails(Array.isArray(data.emails) ? data.emails : []);
                 setTotal(Number.isFinite(data.total) ? data.total : 0);
             } catch (err) {
+                if ((err as Error).name === "AbortError") return;
                 console.error("Failed to fetch unread emails:", err);
                 setError("Could not load unread emails.");
                 setEmails([]);
                 setTotal(0);
             } finally {
-                setLoading(false);
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
             }
         };
 
         fetchEmails();
-    }, [currentPage]);
+        return () => controller.abort();
+    }, [currentPage, category, confidence, date, sort]);
 
-    const filteredEmails = emails.filter((email) => {
-        const query = search.trim().toLowerCase();
-        if (!query) return true;
-        return (
-            email.subject.toLowerCase().includes(query) ||
-            email.sender.toLowerCase().includes(query)
-        );
-    });
+    const debouncedSearch = useDebouncedValue(search, 250);
+    const filteredEmails = useMemo(
+        () => filterEmailsByQuery(emails, debouncedSearch),
+        [emails, debouncedSearch]
+    );
 
     const totalPages = Math.ceil(total / PER_PAGE);
-    const pageNumbers = Array.from({ length: totalPages }, (_, idx) => idx + 1);
+    const pageNumbers = useMemo(
+        () => Array.from({ length: totalPages }, (_, idx) => idx + 1),
+        [totalPages]
+    );
 
     const removeEmailFromList = (id: string) => {
         setEmails((prev) => prev.filter((email) => email.id !== id));
         setTotal((prev) => Math.max(0, prev - 1));
     };
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [category, confidence, date, sort]);
 
     useEffect(() => {
         if (totalPages === 0 && currentPage !== 1) {
@@ -118,10 +178,10 @@ export default function UnreadEmailsPage() {
                     />
                 </div>
                 <div className="flex flex-wrap gap-3 text-xs">
-                    <Select label="Category" />
-                    <Select label="AI Confidence" />
-                    <Select label="Date" />
-                    <Select label="Sort" />
+                    <Select label="Category" value={category} options={CATEGORY_OPTIONS} onChange={setCategory} />
+                    <Select label="AI Confidence" value={confidence} options={CONFIDENCE_OPTIONS} onChange={setConfidence} />
+                    <Select label="Date" value={date} options={DATE_OPTIONS} onChange={setDate} />
+                    <Select label="Sort" value={sort} options={SORT_OPTIONS} onChange={setSort} />
                 </div>
             </div>
 

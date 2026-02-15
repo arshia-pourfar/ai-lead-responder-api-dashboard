@@ -1,11 +1,37 @@
-export default function Select({ label }: { label: string }) {
+interface SelectOption {
+    label: string;
+    value: string;
+}
+
+interface SelectProps {
+    label: string;
+    value?: string;
+    options?: SelectOption[];
+    onChange?: (value: string) => void;
+}
+
+const DEFAULT_OPTIONS: SelectOption[] = [
+    { label: "All", value: "all" },
+    { label: "High", value: "high" },
+    { label: "Medium", value: "medium" },
+    { label: "Low", value: "low" },
+];
+
+export default function Select({ label, value, options, onChange }: SelectProps) {
+    const selectOptions = options && options.length > 0 ? options : DEFAULT_OPTIONS;
+
     return (
-        <select className="border border-border rounded-md px-2 py-1 bg-bg text-xs">
-            <option>{label}</option>
-            <option>All</option>
-            <option>High</option>
-            <option>Medium</option>
-            <option>Low</option>
+        <select
+            className="border border-border rounded-md px-2 py-1 bg-bg text-xs"
+            value={value}
+            onChange={(event) => onChange?.(event.target.value)}
+        >
+            {!value && <option value="">{label}</option>}
+            {selectOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                    {option.label}
+                </option>
+            ))}
         </select>
     );
 }

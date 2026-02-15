@@ -43,7 +43,7 @@ model Email {
   body        String
   aiReply     String?
   manualReply String?
-  category    String   @default("support")
+  category    String   @default("general")
   status      String   @default("draft") // draft, ready_send, sent, analyzed
   tag         String   @default("unread") // unread, read, sent, important
   readyToSend Boolean  @default(false)

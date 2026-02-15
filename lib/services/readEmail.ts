@@ -19,7 +19,7 @@ const imapConfig: ImapConfig = {
     host: "imap.gmail.com",
     port: 993,
     tls: true,
-    tlsOptions: { rejectUnauthorized: false }, // ← مهم
+    tlsOptions: { rejectUnauthorized: false },
 };
 
 export interface Email {
@@ -28,12 +28,11 @@ export interface Email {
     name?: string;
     subject: string;
     text: string;
+    date?: Date;
 }
 
-// نوع خروجی تابع simpleParser
 type ParsedEmail = Awaited<ReturnType<typeof simpleParser>>;
 
-// interface ساده برای msg
 interface ImapMessage {
     on(event: "body", callback: (stream: Readable) => void): void;
     once(event: "attributes", callback: (attrs: FetchMessageAttributes) => void): void;
@@ -78,6 +77,36 @@ function searchUnseen(imap: ImapClient): Promise<number[]> {
     });
 }
 
+function sortUnseenByArrival(imap: ImapClient): Promise<number[]> {
+    return new Promise((resolve) => {
+        const sort = (imap as unknown as {
+            sort?: (
+                sortCriteria: string[],
+                searchCriteria: unknown[],
+                cb: (err: Error | null, results?: number[]) => void
+            ) => void;
+        }).sort;
+
+        if (!sort) {
+            resolve([]);
+            return;
+        }
+
+        try {
+            sort.call(imap, ["-ARRIVAL"], ["UNSEEN"], (err: Error | null, results?: number[]) => {
+                if (err) {
+                    resolve([]);
+                    return;
+                }
+                resolve(results ?? []);
+            });
+        } catch {
+            // Some IMAP servers do not support SORT; fallback to search-based flow.
+            resolve([]);
+        }
+    });
+}
+
 async function parseEmailContent(stream: Readable): Promise<Omit<Email, "uid">> {
     const parsed: ParsedEmail = await simpleParser(stream);
     return {
@@ -85,6 +114,7 @@ async function parseEmailContent(stream: Readable): Promise<Omit<Email, "uid">> 
         name: parsed.from?.value?.[0]?.name || "",
         subject: parsed.subject || "",
         text: parsed.text || "",
+        date: parsed.date || undefined,
     };
 }
 
@@ -130,7 +160,12 @@ function fetchEmailsByUids(imap: ImapClient, uids: number[]): Promise<Email[]> {
         fetcher.once("end", async () => {
             try {
                 const parsed = await Promise.all(parsePromises);
-                resolve(parsed.sort((a, b) => b.uid - a.uid));
+                resolve(parsed.sort((a, b) => {
+                    const left = a.date?.getTime() ?? 0;
+                    const right = b.date?.getTime() ?? 0;
+                    if (right !== left) return right - left;
+                    return b.uid - a.uid;
+                }));
             } catch (error) {
                 reject(error);
             }
@@ -142,7 +177,6 @@ function fetchEmailsByUids(imap: ImapClient, uids: number[]): Promise<Email[]> {
     });
 }
 
-// خواندن یک ایمیل
 export async function readOneEmail(): Promise<Email | null> {
     return new Promise((resolve, reject) => {
         const imap = new Imap(imapConfig);
@@ -247,7 +281,12 @@ export async function readUnreadEmailsPaginated(limit: number, offset: number): 
         imap.once("ready", async () => {
             try {
                 await openInbox(imap);
-                const unseen = (await searchUnseen(imap)).sort((a, b) => b - a);
+
+                const sortedByArrival = await sortUnseenByArrival(imap);
+                const unseen = sortedByArrival.length > 0
+                    ? sortedByArrival
+                    : (await searchUnseen(imap)).sort((a, b) => b - a);
+
                 const total = unseen.length;
 
                 if (total === 0) {
@@ -280,7 +319,6 @@ export async function readUnreadEmailsPaginated(limit: number, offset: number): 
     });
 }
 
-// خواندن همه ایمیل‌های خوانده نشده
 export async function readUnreadEmails(): Promise<Email[]> {
     const result = await readUnreadEmailsPaginated(Number.MAX_SAFE_INTEGER, 0);
     return result.emails;

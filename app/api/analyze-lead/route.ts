@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeLead } from "@/lib/services/gemini";
-import { detectCategory } from "@/lib/services/classifier";
+import { detectCategory, normalizeCategory } from "@/lib/services/classifier";
 import { sendAutoReply } from "@/lib/services/email";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
     const { message, email, subject, userId, accountId, category } = await req.json();
@@ -17,10 +18,9 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        let detectedCategory = category;
-        if (!detectedCategory) {
-            detectedCategory = await detectCategory(message);
-        }
+        const detectedCategory = category
+            ? normalizeCategory(category)
+            : await detectCategory(message);
 
         const { reply } = await analyzeLead(detectedCategory, message);
 
@@ -29,10 +29,11 @@ export async function POST(req: NextRequest) {
                 subject,
                 body: message,
                 aiReply: reply,
+                category: detectedCategory,
                 status: "sent",
-                tag: "read",
+                tag: "sent",
                 readyToSend: false,
-                readyToSell: false,
+                readyToSell: detectedCategory === "sales",
                 userId,
                 accountId: accountId || null,
             },

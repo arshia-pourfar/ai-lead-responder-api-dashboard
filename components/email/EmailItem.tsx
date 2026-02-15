@@ -80,7 +80,7 @@ export default function EmailItem({
                     throw new Error(data?.error || "Failed to ignore email");
                 }
                 onRemoveEmail?.(id);
-                alert("Marked as read");
+                // alert("Marked as read");
                 return;
             }
 
@@ -114,7 +114,6 @@ export default function EmailItem({
                     sender,
                     body,
                     text: finalText,
-                    category: "support",
                 }),
             });
             const approveData = await approveRes.json().catch(() => null);
@@ -126,7 +125,7 @@ export default function EmailItem({
                 onMoveToReady?.(approveData.readyEmail);
             }
             onRemoveEmail?.(id);
-            alert("Moved to Ready!");
+            // alert("Moved to Ready!");
         } catch (err) {
             console.error(err);
             alert("Failed to approve email");
@@ -157,7 +156,7 @@ export default function EmailItem({
 
             setIsEditing(false);
             onUpdateEmail?.(id, { manualReply: editText, aiReply: editText });
-            alert("Saved!");
+            // alert("Saved!");
         } catch (err) {
             console.error(err);
             alert("Failed to save edit");
@@ -186,13 +185,14 @@ export default function EmailItem({
                     sender,
                     body,
                     manualReply: finalReply,
+                    sendNow: true,
                 }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Send failed");
 
             onUpdateEmail?.(id, { manualReply: finalReply, aiReply: finalReply, tag: "sent" });
-            alert("Email sent!");
+            // alert("Email sent!");
         } catch (err) {
             console.error(err);
             const message = err instanceof Error ? err.message : "Failed to send email";

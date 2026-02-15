@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, DollarSign, Sparkles } from "lucide-react";
 import EmailItem from "@/components/email/EmailItem";
 import Select from "@/components/ui/Select";
 import Stat from "@/components/ui/Stat";
 import PageHeader from "@/components/ui/Header";
 import SuperLoading from "@/components/ui/SuperLoading";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
+import { filterEmailsByQuery } from "@/lib/utils/filterEmails";
 
 interface Email {
   id: string;
@@ -17,30 +19,88 @@ interface Email {
   sellScore?: number;
 }
 
+const SCORE_OPTIONS = [
+  { label: "All", value: "all" },
+  { label: "High", value: "high" },
+  { label: "Medium", value: "medium" },
+  { label: "Low", value: "low" },
+];
+
+const DATE_OPTIONS = [
+  { label: "All Time", value: "all" },
+  { label: "Today", value: "today" },
+  { label: "Last 7 Days", value: "7d" },
+  { label: "Last 30 Days", value: "30d" },
+  { label: "Last 90 Days", value: "90d" },
+];
+
+const SOURCE_OPTIONS = [
+  { label: "Newest", value: "newest" },
+  { label: "Oldest", value: "oldest" },
+  { label: "Subject A-Z", value: "subject_asc" },
+  { label: "Subject Z-A", value: "subject_desc" },
+  { label: "Sender A-Z", value: "sender_asc" },
+  { label: "Sender Z-A", value: "sender_desc" },
+  { label: "Confidence High-Low", value: "confidence_desc" },
+  { label: "Confidence Low-High", value: "confidence_asc" },
+];
+
 export default function ReadyToSellPage() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-
-  // ایمیل انتخاب‌شده برای نمایش مودال
+  const [error, setError] = useState<string | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [score, setScore] = useState("all");
+  const [date, setDate] = useState("all");
+  const [source, setSource] = useState("newest");
 
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchEmails = async () => {
       try {
-        const res = await fetch("/api/ready-to-sell");
+        setLoading(true);
+        setError(null);
+        const params = new URLSearchParams({
+          category: "important",
+          confidence: score,
+          date,
+          sort: source,
+        });
+        const res = await fetch(`/api/ready-to-sell?${params.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error || "Failed to fetch ready-to-sell emails");
+        }
+
         const data = await res.json();
         setEmails(Array.isArray(data) ? data : []);
       } catch (err) {
+        if ((err as Error).name === "AbortError") return;
         console.error(err);
+        setError("Could not load ready-to-sell emails.");
         setEmails([]);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchEmails();
-  }, []);
+    return () => controller.abort();
+  }, [score, date, source]);
+
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const filteredEmails = useMemo(
+    () => filterEmailsByQuery(emails, debouncedSearch),
+    [emails, debouncedSearch]
+  );
 
   if (loading) return <SuperLoading variant="list" label="Loading leads" />;
 
@@ -71,18 +131,19 @@ export default function ReadyToSellPage() {
           />
         </div>
         <div className="flex flex-wrap gap-3 text-xs">
-          <Select label="Score" />
-          <Select label="Date" />
-          <Select label="Source" />
+          <Select label="Score" value={score} options={SCORE_OPTIONS} onChange={setScore} />
+          <Select label="Date" value={date} options={DATE_OPTIONS} onChange={setDate} />
+          <Select label="Source" value={source} options={SOURCE_OPTIONS} onChange={setSource} />
         </div>
       </div>
 
       <div className="flex gap-3 text-xs">
         <Stat label="Hot Leads" value={emails.length} color="text-red-500" />
       </div>
- 
+
       <div className="flex-1 overflow-y-auto pe-1 scrollbar-thin flex flex-col gap-2">
-        {emails.map((email) => (
+        {error && <p className="text-xs text-danger">{error}</p>}
+        {filteredEmails.map((email) => (
           <EmailItem
             key={email.id}
             id={email.id}
@@ -91,14 +152,12 @@ export default function ReadyToSellPage() {
             body={email.body || ""}
             aiReply={email.aiReply || ""}
             tag="important"
-            // sellScore={email.sellScore}
-            onSelect={() => setSelectedEmail(email)} // اینجا وصل شد
+            onSelect={() => setSelectedEmail(email)}
           />
         ))}
-        {emails.length === 0 && <p className="text-xs text-muted">No emails found</p>}
+        {!error && filteredEmails.length === 0 && <p className="text-xs text-muted">No emails found</p>}
       </div>
 
-      {/* FULL PAGE MODAL */}
       {selectedEmail && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-bg w-full h-full max-w-5xl max-h-[90vh] overflow-auto p-6 rounded-xl">
