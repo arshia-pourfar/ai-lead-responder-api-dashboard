@@ -1,17 +1,6 @@
 import type { Metadata } from "next";
-// import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/ui/Sidebar";
-
-// const geistSans = Geist({
-//   variable: "--font-geist-sans",
-//   subsets: ["latin"],
-// });
-
-// const geistMono = Geist_Mono({
-//   variable: "--font-geist-mono",
-//   subsets: ["latin"],
-// });
 
 export const metadata: Metadata = {
   title: "AI LEAD RESPONDER",
@@ -26,9 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="flex h-screen">
+        <div className="flex min-h-screen h-[100dvh] flex-col overflow-hidden bg-card text-text md:flex-row">
           <Sidebar />
-          <main className="flex-1 overflow-hidden p-4">{children}</main>
+          <main className="min-w-0 flex-1 overflow-hidden p-3 sm:p-4 lg:p-5">{children}</main>
         </div>
       </body>
     </html>

@@ -2,7 +2,23 @@ import Imap from "imap";
 import { simpleParser } from "mailparser";
 import { Readable } from "stream";
 import dotenv from "dotenv";
+import {
+    ResolvedEmailCredentials,
+    resolveEmailCredentialCandidates,
+} from "@/lib/services/emailCredentials";
 dotenv.config();
+
+const EMAIL_IMAP_DIAGNOSTICS =
+    (process.env.EMAIL_IMAP_DIAGNOSTICS || "").toLowerCase() === "true";
+
+function imapDiagnosticsLog(message: string, payload?: Record<string, unknown>): void {
+    if (!EMAIL_IMAP_DIAGNOSTICS) return;
+    if (payload) {
+        console.log(`[readEmail] ${message}`, payload);
+        return;
+    }
+    console.log(`[readEmail] ${message}`);
+}
 
 interface ImapConfig {
     user: string;
@@ -12,15 +28,6 @@ interface ImapConfig {
     tls?: boolean;
     tlsOptions?: object;
 }
-
-const imapConfig: ImapConfig = {
-    user: process.env.EMAIL_USER!,
-    password: process.env.EMAIL_PASS!,
-    host: "imap.gmail.com",
-    port: 993,
-    tls: true,
-    tlsOptions: { rejectUnauthorized: false },
-};
 
 export interface Email {
     uid: number;
@@ -51,6 +58,135 @@ type ImapClient = InstanceType<typeof Imap>;
 export interface PaginatedUnreadResult {
     emails: Email[];
     total: number;
+}
+
+interface ImapConfigCandidate {
+    source: ResolvedEmailCredentials["source"];
+    emailAddress: string;
+    config: ImapConfig;
+}
+
+function toImapConfig(credentials: ResolvedEmailCredentials): ImapConfig {
+    return {
+        user: credentials.emailAddress,
+        password: credentials.appPassword,
+        host: "imap.gmail.com",
+        port: 993,
+        tls: true,
+        tlsOptions: { rejectUnauthorized: false },
+    };
+}
+
+async function getImapConfigCandidates(userId?: string): Promise<ImapConfigCandidate[]> {
+    const candidates = await resolveEmailCredentialCandidates(userId);
+    return candidates.map((candidate) => ({
+        source: candidate.source,
+        emailAddress: candidate.emailAddress,
+        config: toImapConfig(candidate),
+    }));
+}
+
+function isImapAuthenticationFailure(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const message = error.message.toLowerCase();
+    return (
+        message.includes("authenticationfailed") ||
+        message.includes("invalid credentials") ||
+        message.includes("auth")
+    );
+}
+
+function describeImapError(error: unknown): Record<string, unknown> {
+    if (error instanceof Error) {
+        const extended = error as Error & {
+            textCode?: string;
+            source?: string;
+            type?: string;
+        };
+
+        return {
+            message: extended.message,
+            textCode: extended.textCode || null,
+            source: extended.source || null,
+            type: extended.type || null,
+        };
+    }
+
+    return {
+        message: String(error),
+    };
+}
+
+async function runWithImapFallback<T>(
+    userId: string | undefined,
+    onMissingCredentials: () => T,
+    operation: (imapConfig: ImapConfig) => Promise<T>
+): Promise<T> {
+    const candidates = await getImapConfigCandidates(userId);
+    imapDiagnosticsLog("runWithImapFallback:candidates", {
+        userId: userId || null,
+        count: candidates.length,
+        sources: candidates.map((candidate) => candidate.source),
+        emails: candidates.map((candidate) => candidate.emailAddress),
+    });
+
+    if (candidates.length === 0) {
+        return onMissingCredentials();
+    }
+
+    let lastError: unknown;
+
+    for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        imapDiagnosticsLog("runWithImapFallback:attempt", {
+            userId: userId || null,
+            attempt: index + 1,
+            source: candidate.source,
+            email: candidate.emailAddress,
+        });
+
+        try {
+            const result = await operation(candidate.config);
+            imapDiagnosticsLog("runWithImapFallback:success", {
+                userId: userId || null,
+                attempt: index + 1,
+                source: candidate.source,
+                email: candidate.emailAddress,
+            });
+            return result;
+        } catch (error) {
+            lastError = error;
+            imapDiagnosticsLog("runWithImapFallback:error", {
+                userId: userId || null,
+                attempt: index + 1,
+                source: candidate.source,
+                email: candidate.emailAddress,
+                ...describeImapError(error),
+                authFailure: isImapAuthenticationFailure(error),
+            });
+
+            const hasNext = index < candidates.length - 1;
+            const canFallback =
+                hasNext &&
+                candidate.source === "user" &&
+                isImapAuthenticationFailure(error);
+
+            if (canFallback) {
+                console.warn(
+                    `IMAP authentication failed for user credentials (${candidate.emailAddress}); trying fallback credentials.`
+                );
+                continue;
+            }
+
+            throw error;
+        }
+    }
+
+    if (lastError instanceof Error) {
+        throw lastError;
+    }
+
+    throw new Error("IMAP operation failed");
 }
 
 function openInbox(imap: ImapClient): Promise<void> {
@@ -101,7 +237,6 @@ function sortUnseenByArrival(imap: ImapClient): Promise<number[]> {
                 resolve(results ?? []);
             });
         } catch {
-            // Some IMAP servers do not support SORT; fallback to search-based flow.
             resolve([]);
         }
     });
@@ -177,149 +312,170 @@ function fetchEmailsByUids(imap: ImapClient, uids: number[]): Promise<Email[]> {
     });
 }
 
-export async function readOneEmail(): Promise<Email | null> {
-    return new Promise((resolve, reject) => {
-        const imap = new Imap(imapConfig);
+export async function readOneEmail(userId?: string): Promise<Email | null> {
+    return runWithImapFallback<Email | null>(
+        userId,
+        () => null,
+        async (imapConfig) =>
+            new Promise((resolve, reject) => {
+                const imap = new Imap(imapConfig);
 
-        imap.once("ready", async () => {
-            try {
-                await openInbox(imap);
-                const unseen = await searchUnseen(imap);
-                if (unseen.length === 0) {
-                    imap.end();
-                    resolve(null);
-                    return;
-                }
-
-                const latestUid = unseen[unseen.length - 1];
-                const fetcher = imap.fetch(latestUid, { bodies: "" }) as ImapFetchRequest;
-                let email: Email | null = null;
-
-                fetcher.on("message", (msg: ImapMessage) => {
-                    const uidPromise = new Promise<number>((resolveUid) => {
-                        msg.once("attributes", (attrs: FetchMessageAttributes) => {
-                            resolveUid(attrs.uid ?? latestUid);
-                        });
-                    });
-
-                    msg.on("body", async (stream: Readable) => {
-                        try {
-                            const [uid, parsed] = await Promise.all([
-                                uidPromise,
-                                parseEmailContent(stream),
-                            ]);
-                            email = { ...parsed, uid };
-                        } catch (error) {
-                            reject(error);
-                        }
-                    });
-                });
-
-                fetcher.once("end", () => {
-                    if (!email) {
-                        imap.end();
-                        resolve(null);
-                        return;
-                    }
-
-                    imap.addFlags(latestUid, "\\Seen", (flagErr: Error | null) => {
-                        if (flagErr) {
+                imap.once("ready", async () => {
+                    try {
+                        await openInbox(imap);
+                        const unseen = await searchUnseen(imap);
+                        if (unseen.length === 0) {
                             imap.end();
-                            reject(flagErr);
+                            resolve(null);
                             return;
                         }
+
+                        const latestUid = unseen[unseen.length - 1];
+                        const fetcher = imap.fetch(latestUid, { bodies: "" }) as ImapFetchRequest;
+                        let email: Email | null = null;
+
+                        fetcher.on("message", (msg: ImapMessage) => {
+                            const uidPromise = new Promise<number>((resolveUid) => {
+                                msg.once("attributes", (attrs: FetchMessageAttributes) => {
+                                    resolveUid(attrs.uid ?? latestUid);
+                                });
+                            });
+
+                            msg.on("body", async (stream: Readable) => {
+                                try {
+                                    const [uid, parsed] = await Promise.all([
+                                        uidPromise,
+                                        parseEmailContent(stream),
+                                    ]);
+                                    email = { ...parsed, uid };
+                                } catch (error) {
+                                    reject(error);
+                                }
+                            });
+                        });
+
+                        fetcher.once("end", () => {
+                            if (!email) {
+                                imap.end();
+                                resolve(null);
+                                return;
+                            }
+
+                            imap.addFlags(latestUid, "\\Seen", (flagErr: Error | null) => {
+                                if (flagErr) {
+                                    imap.end();
+                                    reject(flagErr);
+                                    return;
+                                }
+                                imap.end();
+                                resolve(email);
+                            });
+                        });
+
+                        fetcher.once("error", (error?: Error) => {
+                            imap.end();
+                            reject(error ?? new Error("IMAP fetch error"));
+                        });
+                    } catch (error) {
                         imap.end();
-                        resolve(email);
-                    });
-                });
-
-                fetcher.once("error", (error?: Error) => {
-                    imap.end();
-                    reject(error ?? new Error("IMAP fetch error"));
-                });
-            } catch (error) {
-                imap.end();
-                reject(error);
-            }
-        });
-
-        imap.once("error", reject);
-        imap.connect();
-    });
-}
-
-export async function markEmailAsSeenByUid(uid: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const imap = new Imap(imapConfig);
-
-        imap.once("ready", async () => {
-            try {
-                await openInbox(imap);
-                imap.addFlags(uid, "\\Seen", (err: Error | null) => {
-                    imap.end();
-                    if (err) {
-                        reject(err);
-                        return;
+                        reject(error);
                     }
-                    resolve();
                 });
-            } catch (error) {
-                imap.end();
-                reject(error);
-            }
-        });
 
-        imap.once("error", reject);
-        imap.connect();
-    });
+                imap.once("error", reject);
+                imap.connect();
+            })
+    );
 }
 
-export async function readUnreadEmailsPaginated(limit: number, offset: number): Promise<PaginatedUnreadResult> {
-    return new Promise((resolve, reject) => {
-        const imap = new Imap(imapConfig);
+export async function markEmailAsSeenByUid(uid: number, userId?: string): Promise<void> {
+    return runWithImapFallback<void>(
+        userId,
+        () => {
+            throw new Error("Email credentials are missing");
+        },
+        async (imapConfig) =>
+            new Promise<void>((resolve, reject) => {
+                const imap = new Imap(imapConfig);
 
-        imap.once("ready", async () => {
-            try {
-                await openInbox(imap);
+                imap.once("ready", async () => {
+                    try {
+                        await openInbox(imap);
+                        imap.addFlags(uid, "\\Seen", (err: Error | null) => {
+                            imap.end();
+                            if (err) {
+                                reject(err);
+                                return;
+                            }
+                            resolve();
+                        });
+                    } catch (error) {
+                        imap.end();
+                        reject(error);
+                    }
+                });
 
-                const sortedByArrival = await sortUnseenByArrival(imap);
-                const unseen = sortedByArrival.length > 0
-                    ? sortedByArrival
-                    : (await searchUnseen(imap)).sort((a, b) => b - a);
-
-                const total = unseen.length;
-
-                if (total === 0) {
-                    imap.end();
-                    resolve({ emails: [], total: 0 });
-                    return;
-                }
-
-                const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 50;
-                const safeOffset = Number.isFinite(offset) && offset >= 0 ? Math.floor(offset) : 0;
-                const selectedUids = unseen.slice(safeOffset, safeOffset + safeLimit);
-
-                if (selectedUids.length === 0) {
-                    imap.end();
-                    resolve({ emails: [], total });
-                    return;
-                }
-
-                const emails = await fetchEmailsByUids(imap, selectedUids);
-                imap.end();
-                resolve({ emails, total });
-            } catch (error) {
-                imap.end();
-                reject(error);
-            }
-        });
-
-        imap.once("error", reject);
-        imap.connect();
-    });
+                imap.once("error", reject);
+                imap.connect();
+            })
+    );
 }
 
-export async function readUnreadEmails(): Promise<Email[]> {
-    const result = await readUnreadEmailsPaginated(Number.MAX_SAFE_INTEGER, 0);
+export async function readUnreadEmailsPaginated(
+    limit: number,
+    offset: number,
+    userId?: string
+): Promise<PaginatedUnreadResult> {
+    return runWithImapFallback<PaginatedUnreadResult>(
+        userId,
+        () => ({ emails: [], total: 0 }),
+        async (imapConfig) =>
+            new Promise((resolve, reject) => {
+                const imap = new Imap(imapConfig);
+
+                imap.once("ready", async () => {
+                    try {
+                        await openInbox(imap);
+
+                        const sortedByArrival = await sortUnseenByArrival(imap);
+                        const unseen = sortedByArrival.length > 0
+                            ? sortedByArrival
+                            : (await searchUnseen(imap)).sort((a, b) => b - a);
+
+                        const total = unseen.length;
+
+                        if (total === 0) {
+                            imap.end();
+                            resolve({ emails: [], total: 0 });
+                            return;
+                        }
+
+                        const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 50;
+                        const safeOffset = Number.isFinite(offset) && offset >= 0 ? Math.floor(offset) : 0;
+                        const selectedUids = unseen.slice(safeOffset, safeOffset + safeLimit);
+
+                        if (selectedUids.length === 0) {
+                            imap.end();
+                            resolve({ emails: [], total });
+                            return;
+                        }
+
+                        const emails = await fetchEmailsByUids(imap, selectedUids);
+                        imap.end();
+                        resolve({ emails, total });
+                    } catch (error) {
+                        imap.end();
+                        reject(error);
+                    }
+                });
+
+                imap.once("error", reject);
+                imap.connect();
+            })
+    );
+}
+
+export async function readUnreadEmails(userId?: string): Promise<Email[]> {
+    const result = await readUnreadEmailsPaginated(Number.MAX_SAFE_INTEGER, 0, userId);
     return result.emails;
 }

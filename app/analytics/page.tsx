@@ -120,7 +120,7 @@ export default function AnalysisPage() {
     };
 
     return (
-        <div className="h-full flex flex-col gap-4 overflow-auto">
+        <div className="flex h-full min-w-0 flex-col gap-4 overflow-auto">
             {/* HEADER */}
             <PageHeader
                 title="Analysis"
@@ -136,7 +136,7 @@ export default function AnalysisPage() {
             {/* CHARTS GRID */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* PIE CHART */}
-                <div className="border border-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="min-w-0 border border-border rounded-xl p-4 flex flex-col gap-2">
                     <h3 className="font-semibold text-sm mb-2">Leads by Category</h3>
                     <div className="w-full h-48">
                         {categoryData.length > 0 ? (
@@ -166,7 +166,7 @@ export default function AnalysisPage() {
                 </div>
 
                 {/* SALES BAR CHART */}
-                <div className="border border-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="min-w-0 border border-border rounded-xl p-4 flex flex-col gap-2">
                     <h3 className="font-semibold text-sm mb-2">Sales Over Time</h3>
                     <div className="w-full h-48">
                         {salesData.length > 0 ? (
@@ -187,23 +187,25 @@ export default function AnalysisPage() {
             </div>
 
             {/* SOLD EMAILS LIST */}
-            <div className="border border-border rounded-xl p-4 flex flex-col gap-2">
+            <div className="min-h-0 border border-border rounded-xl p-4 flex flex-col gap-2">
                 <h3 className="font-semibold text-sm mb-2">Sold Emails</h3>
-                {soldEmails.length > 0 ? (
-                    soldEmails.map((email) => (
-                        <EmailItem
-                            key={email.id}
-                            id={email.id}
-                            subject={email.subject}
-                            sender={email.sender}
-                            body={email.body || "No body available"}
-                            tag="important"
-                            onSelect={() => handleSelectEmail(email.id)}
-                        />
-                    ))
-                ) : (
-                    <p className="text-xs text-muted">No sold emails found</p>
-                )}
+                <div className="max-h-[45vh] overflow-y-auto pe-1 scrollbar-thin">
+                    {soldEmails.length > 0 ? (
+                        soldEmails.map((email) => (
+                            <EmailItem
+                                key={email.id}
+                                id={email.id}
+                                subject={email.subject}
+                                sender={email.sender}
+                                body={email.body || "No body available"}
+                                tag="important"
+                                onSelect={() => handleSelectEmail(email.id)}
+                            />
+                        ))
+                    ) : (
+                        <p className="text-xs text-muted">No sold emails found</p>
+                    )}
+                </div>
 
             </div>
 

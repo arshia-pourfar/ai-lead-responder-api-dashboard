@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import EmailItem from "@/components/email/EmailItem";
+import EmailDetailModal, { EmailModalData } from "@/components/email/EmailDetailModal";
 import PageHeader from "@/components/ui/Header";
 import Card from "@/components/ui/Card";
 import SuperLoading from "@/components/ui/SuperLoading";
 
-interface Email {
+interface Email extends EmailModalData {
   id: string;
   subject: string;
   sender: string;
@@ -165,12 +166,131 @@ export default function Dashboard() {
     });
   };
 
+  const ensureReplyText = async (email: EmailModalData, replyText: string): Promise<string> => {
+    const normalized = replyText.trim();
+    if (normalized) return normalized;
+
+    const aiRes = await fetch("/api/ai-analyze-lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ category: "support", message: email.body || "" }),
+    });
+    const aiData = await aiRes.json().catch(() => null);
+    if (!aiRes.ok) {
+      throw new Error(aiData?.error || "Could not generate AI reply");
+    }
+
+    const generated = String(aiData?.reply || "").trim();
+    if (!generated) {
+      throw new Error("Reply text cannot be empty");
+    }
+    return generated;
+  };
+
+  const approveUnreadEmail = async (email: EmailModalData, replyText: string) => {
+    const approveRes = await fetch("/api/unread-emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        emailId: email.id,
+        subject: email.subject,
+        sender: email.sender,
+        body: email.body || "",
+        text: replyText,
+      }),
+    });
+    const approveData = await approveRes.json().catch(() => null);
+    if (!approveRes.ok || !approveData?.readyEmail) {
+      throw new Error(approveData?.error || "Failed to approve email");
+    }
+    return approveData.readyEmail as Email;
+  };
+
+  const saveFromModal = async (email: EmailModalData, replyText: string) => {
+    if (email.tag === "unread") {
+      const finalReply = await ensureReplyText(email, replyText);
+      const readyEmail = await approveUnreadEmail(email, finalReply);
+      removeUnreadEmail(email.id);
+      moveUnreadToReady(readyEmail);
+      setSelectedEmail(null);
+      return;
+    }
+
+    const res = await fetch("/api/ready-to-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        emailId: email.id,
+        manualReply: replyText,
+        aiReply: replyText,
+        saveOnly: true,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(data?.error || "Save failed");
+    }
+    updateEmail(email.id, { manualReply: replyText, aiReply: replyText });
+  };
+
+  const sendFromModal = async (email: EmailModalData, replyText: string) => {
+    if (email.tag === "unread") {
+      const finalReply = await ensureReplyText(email, replyText);
+      const readyEmail = await approveUnreadEmail(email, finalReply);
+
+      const sendRes = await fetch("/api/ready-to-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          emailId: readyEmail.id,
+          subject: readyEmail.subject,
+          sender: readyEmail.sender,
+          body: readyEmail.body,
+          manualReply: finalReply,
+          sendNow: true,
+        }),
+      });
+      const sendData = await sendRes.json().catch(() => null);
+      if (!sendRes.ok) {
+        throw new Error(sendData?.error || "Send failed");
+      }
+
+      removeUnreadEmail(email.id);
+      setSelectedEmail(null);
+      return;
+    }
+
+    const res = await fetch("/api/ready-to-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        emailId: email.id,
+        subject: email.subject,
+        sender: email.sender,
+        body: email.body || "",
+        manualReply: replyText,
+        sendNow: true,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(data?.error || "Send failed");
+    }
+    updateEmail(email.id, { manualReply: replyText, aiReply: replyText, tag: "sent" });
+    setSelectedEmail(null);
+  };
+
   if (loading) {
     return <SuperLoading variant="dashboard" label="Syncing dashboard" />;
   }
 
   return (
-    <div className="h-full flex flex-col gap-3 overflow-auto relative">
+    <div className="relative flex h-full min-w-0 flex-col gap-3 overflow-auto">
       <PageHeader
         title="Dashboard"
         subtitle="AI Email Overview"
@@ -182,7 +302,7 @@ export default function Dashboard() {
         ]}
       />
       {error && <p className="text-xs text-danger">{error}</p>}
-      <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 overflow-hidden">
+      <div className="grid flex-1 min-h-0 grid-cols-1 gap-3 overflow-auto md:grid-cols-2">
         <SectionCard
           title="Ready To Send"
           emails={readyEmails}
@@ -215,30 +335,12 @@ export default function Dashboard() {
         />
       </div>
 
-      {selectedEmail && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-bg w-full h-full max-w-5xl max-h-[90vh] overflow-auto p-6 rounded-xl">
-            <h3 className="font-semibold mb-4 text-lg">{selectedEmail.subject}</h3>
-            <p className="text-sm text-muted whitespace-pre-line">
-              {selectedEmail.body || "No content"}
-            </p>
-            {(selectedEmail.aiReply || selectedEmail.manualReply) && (
-              <div className="mt-4 border-t pt-2">
-                <p className="font-semibold text-sm">Reply:</p>
-                <p className="text-sm text-muted whitespace-pre-line">
-                  {selectedEmail.manualReply || selectedEmail.aiReply}
-                </p>
-              </div>
-            )}
-            <button
-              onClick={() => setSelectedEmail(null)}
-              className="mt-4 px-4 py-2 text-sm border border-border rounded-md hover:border-primary"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      <EmailDetailModal
+        email={selectedEmail}
+        onClose={() => setSelectedEmail(null)}
+        onEdit={saveFromModal}
+        onSend={sendFromModal}
+      />
     </div>
   );
 }
@@ -263,7 +365,7 @@ function SectionCard({
   return (
     <Card
       title={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-sm">{title}</h3>
           <span className="text-xs border border-border px-2 py-0.5 rounded-md text-muted font-medium">
             {emails.length}

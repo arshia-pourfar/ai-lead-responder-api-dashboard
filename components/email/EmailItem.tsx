@@ -80,7 +80,6 @@ export default function EmailItem({
                     throw new Error(data?.error || "Failed to ignore email");
                 }
                 onRemoveEmail?.(id);
-                // alert("Marked as read");
                 return;
             }
 
@@ -125,7 +124,6 @@ export default function EmailItem({
                 onMoveToReady?.(approveData.readyEmail);
             }
             onRemoveEmail?.(id);
-            // alert("Moved to Ready!");
         } catch (err) {
             console.error(err);
             alert("Failed to approve email");
@@ -148,7 +146,7 @@ export default function EmailItem({
                     emailId: id,
                     manualReply: editText,
                     aiReply: editText,
-                    saveOnly: true, // مهم: فقط ذخیره، ارسال نمی‌کنه
+                    saveOnly: true,
                 }),
             });
             const data = await res.json();
@@ -156,7 +154,6 @@ export default function EmailItem({
 
             setIsEditing(false);
             onUpdateEmail?.(id, { manualReply: editText, aiReply: editText });
-            // alert("Saved!");
         } catch (err) {
             console.error(err);
             alert("Failed to save edit");
@@ -192,7 +189,6 @@ export default function EmailItem({
             if (!res.ok) throw new Error(data.error || "Send failed");
 
             onUpdateEmail?.(id, { manualReply: finalReply, aiReply: finalReply, tag: "sent" });
-            // alert("Email sent!");
         } catch (err) {
             console.error(err);
             const message = err instanceof Error ? err.message : "Failed to send email";
@@ -203,22 +199,22 @@ export default function EmailItem({
     };
 
     return (
-        <div className="p-3 border border-border rounded-lg my-2 flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-3">
-                        <div>
-                            <p className="font-semibold text-sm text-text">{subject}</p>
-                            <p className="text-xs text-muted">{sender}</p>
+        <div className="my-1 flex min-w-0 flex-col gap-2 rounded-lg border bg-card border-border p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="w-3/4 flex flex-col gap-1">
+                    <div className="max-w-full flex flex-wrap justify-between items-start gap-2 sm:gap-3">
+                        <div className="min-w-0 max-w-3/4">
+                            <p className="break-words text-sm font-semibold text-text">{subject}</p>
+                            <p className="break-all text-xs text-muted">{sender}</p>
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded ${tagMap[tag]}`}>{tag}</span>
+                        <span className={`shrink-0 rounded px-2 py-1 text-xs ${tagMap[tag]}`}>{tag}</span>
                     </div>
                 </div>
 
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1 self-end sm:self-auto">
                     <button
                         onClick={onSelect}
-                        className="p-1.5 border border-border rounded-md text-muted hover:border-primary"
+                        className="rounded-md border border-border p-1.5 text-muted hover:border-primary"
                     >
                         <Eye size={14} />
                     </button>
@@ -227,7 +223,7 @@ export default function EmailItem({
                         <button
                             onClick={handleApproveModel}
                             disabled={approving}
-                            className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
+                            className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
                         >
                             <Check size={14} />
                         </button>
@@ -238,7 +234,7 @@ export default function EmailItem({
                             {!isEditing ? (
                                 <button
                                     onClick={() => setIsEditing(true)}
-                                    className="p-1.5 border border-accent rounded-md text-accent hover:bg-accent/10"
+                                    className="rounded-md border border-accent p-1.5 text-accent hover:bg-accent/10"
                                 >
                                     <Pencil size={14} />
                                 </button>
@@ -246,7 +242,7 @@ export default function EmailItem({
                                 <button
                                     onClick={handleSaveEdit}
                                     disabled={savingEdit}
-                                    className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
+                                    className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
                                 >
                                     <Check size={14} />
                                 </button>
@@ -255,7 +251,7 @@ export default function EmailItem({
                             <button
                                 onClick={handleFinalConfirm}
                                 disabled={sending}
-                                className="p-1.5 border border-success rounded-md text-success hover:bg-success/10 disabled:opacity-50"
+                                className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
                             >
                                 <Check size={14} />
                             </button>
@@ -265,7 +261,7 @@ export default function EmailItem({
             </div>
 
             {tag === "unread" && (
-                <div className="flex gap-2 mt-1">
+                <div className="mt-1 flex flex-wrap gap-2">
                     <DecisionBtn label="AI Reply" active={decision === "ai"} onClick={() => setDecision("ai")} />
                     <DecisionBtn label="Ignore" active={decision === "ignore"} onClick={() => setDecision("ignore")} />
                     <DecisionBtn label="Manual" active={decision === "manual"} onClick={() => setDecision("manual")} />

@@ -1,10 +1,12 @@
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import { buildClassifierCategories, getUserAiSettings } from "@/lib/services/userSettings";
 dotenv.config();
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-const ALLOWED_CATEGORIES = ["support", "sales", "complaint", "general"] as const;
-export type EmailCategory = (typeof ALLOWED_CATEGORIES)[number];
+const FALLBACK_CATEGORY = "general";
+
+export type EmailCategory = string;
 
 interface GeminiCategoryResponse {
     candidates?: Array<{
@@ -16,30 +18,57 @@ interface GeminiCategoryResponse {
 
 export function normalizeCategory(value: string | null | undefined): EmailCategory {
     const category = (value || "").trim().toLowerCase();
-    if ((ALLOWED_CATEGORIES as readonly string[]).includes(category)) {
-        return category as EmailCategory;
-    }
-    return "general";
+    return category || FALLBACK_CATEGORY;
 }
 
-export async function detectCategory(message: string): Promise<EmailCategory> {
+function normalizeCategoryWithFallback(
+    value: string | null | undefined,
+    allowedCategories: string[],
+    fallbackCategory: string
+): EmailCategory {
+    const category = (value || "").trim().toLowerCase();
+    if (allowedCategories.includes(category)) {
+        return category as EmailCategory;
+    }
+    return fallbackCategory;
+}
+
+export async function detectCategory(message: string, userId?: string): Promise<EmailCategory> {
     const normalizedMessage = (message || "").trim();
-    if (!normalizedMessage) return "general";
+    if (!normalizedMessage) return FALLBACK_CATEGORY;
 
     const apiKey = process.env.GEMINI_API_KEY || "";
-    if (!apiKey) return "general";
+    if (!apiKey) return FALLBACK_CATEGORY;
+
+    let customPrompt = "";
+    let customCategories: string[] = [];
+
+    if (userId) {
+        try {
+            const settings = await getUserAiSettings(userId);
+            customPrompt = settings.customPrompt;
+            customCategories = settings.customCategories;
+        } catch (error) {
+            console.error("Failed to load user AI settings for classification:", error);
+        }
+    }
+
+    const allowedCategories = buildClassifierCategories(customCategories);
+    const categoryList = allowedCategories.map((item) => `- ${item}`).join("\n");
+    const customPromptSection = customPrompt
+        ? `\nAdditional user instruction (append to system behavior):\n${customPrompt}\n`
+        : "";
 
     const prompt = `
     Classify the following customer message into ONE of these categories:
-    - support
-    - sales
-    - complaint
-    - general
+    ${categoryList}
 
     Message:
     "${normalizedMessage}"
 
-    Only return the category name.
+    ${customPromptSection}
+
+    Only return the category name exactly as listed above.
   `;
 
     try {
@@ -56,8 +85,8 @@ export async function detectCategory(message: string): Promise<EmailCategory> {
 
         const data: unknown = await response.json();
         const rawCategory = (data as GeminiCategoryResponse)?.candidates?.[0]?.content?.parts?.[0]?.text;
-        return normalizeCategory(rawCategory);
+        return normalizeCategoryWithFallback(rawCategory, allowedCategories, FALLBACK_CATEGORY);
     } catch {
-        return "general";
+        return FALLBACK_CATEGORY;
     }
 }

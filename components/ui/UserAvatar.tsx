@@ -30,12 +30,12 @@ export default function UserAvatar() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className="w-11 h-11 rounded-full border border-border flex items-center justify-center text-sm font-semibold text-text hover:border-primary transition">
+      <button onClick={() => setOpen(!open)} className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-sm font-semibold text-text transition hover:border-primary sm:h-11 sm:w-11">
         {userName}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-44 bg-card border border-border rounded-xl shadow-lg p-2 z-50">
+        <div className="absolute right-0 z-50 mt-2 w-40 rounded-xl border border-border bg-card p-2 shadow-lg sm:w-44">
           <MenuItem label="Profile" onClick={() => router.push("/settings")} />
           <div className="border-t border-border my-1" />
           <MenuItem label="Logout" danger onClick={handleLogout} />

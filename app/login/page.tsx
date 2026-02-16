@@ -31,8 +31,8 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="flex items-center justify-center h-screen">
-            <form onSubmit={handleSubmit} className="bg-card p-8 rounded-xl border border-border w-80 flex flex-col gap-4">
+        <div className="flex min-h-screen h-[100dvh] items-center justify-center p-4">
+            <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-card p-6 sm:p-8">
                 <h2 className="text-lg font-semibold">Login</h2>
                 {error && <p className="text-red-500 text-xs">{error}</p>}
 

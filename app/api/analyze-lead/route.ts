@@ -3,14 +3,27 @@ import { analyzeLead } from "@/lib/services/gemini";
 import { detectCategory, normalizeCategory } from "@/lib/services/classifier";
 import { sendAutoReply } from "@/lib/services/email";
 import { PrismaClient } from "@prisma/client";
+import { authGuard } from "@/lib/middleware/authMiddleware";
 
 const prisma = new PrismaClient();
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
     const { message, email, subject, userId, accountId, category } = await req.json();
+    const authUser = authGuard(req);
+    const authUserId =
+        authUser && typeof authUser === "object" && "id" in authUser
+            ? String(authUser.id)
+            : "";
+    const requestedUserId = typeof userId === "string" ? userId : "";
 
-    if (!message || !email || !subject || !userId) {
+    if (authUserId && requestedUserId && authUserId !== requestedUserId) {
+        return NextResponse.json({ error: "Unauthorized user context" }, { status: 403 });
+    }
+
+    const effectiveUserId = authUserId || requestedUserId;
+
+    if (!message || !email || !subject || !effectiveUserId) {
         return NextResponse.json(
             { error: "message, email, subject, userId are required" },
             { status: 400 }
@@ -20,9 +33,9 @@ export async function POST(req: NextRequest) {
     try {
         const detectedCategory = category
             ? normalizeCategory(category)
-            : await detectCategory(message);
+            : await detectCategory(message, effectiveUserId);
 
-        const { reply } = await analyzeLead(detectedCategory, message);
+        const { reply } = await analyzeLead(detectedCategory, message, effectiveUserId);
 
         const dbEmail = await prisma.email.create({
             data: {
@@ -34,12 +47,12 @@ export async function POST(req: NextRequest) {
                 tag: "sent",
                 readyToSend: false,
                 readyToSell: detectedCategory === "sales",
-                userId,
+                userId: effectiveUserId,
                 accountId: accountId || null,
             },
         });
 
-        await sendAutoReply(email, reply, detectedCategory);
+        await sendAutoReply(email, reply, detectedCategory, effectiveUserId);
 
         return NextResponse.json({
             category: detectedCategory,

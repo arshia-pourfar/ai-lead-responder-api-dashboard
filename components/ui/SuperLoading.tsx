@@ -12,11 +12,11 @@ function Block({ className = "" }: { className?: string }) {
 
 function HeaderSkeleton() {
     return (
-        <div className="mb-4 flex items-start justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="w-full max-w-xl">
                 <Block className="h-7 w-48" />
                 <Block className="mt-2 h-4 w-72" />
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                     <Block className="h-7 w-28 rounded-md" />
                     <Block className="h-7 w-32 rounded-md" />
                     <Block className="h-7 w-24 rounded-md" />
@@ -52,9 +52,9 @@ export default function SuperLoading({
 }) {
     if (variant === "dashboard") {
         return (
-            <div className="h-full flex flex-col gap-3 overflow-auto relative">
+            <div className="relative flex h-full flex-col gap-3 overflow-auto">
                 <HeaderSkeleton />
-                <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 overflow-hidden">
+                <div className="grid flex-1 min-h-0 grid-cols-1 gap-3 overflow-hidden sm:grid-cols-2">
                     <CardSkeleton rows={3} />
                     <CardSkeleton rows={3} />
                     <CardSkeleton rows={3} />
@@ -89,19 +89,19 @@ export default function SuperLoading({
     }
 
     return (
-        <div className="h-full flex flex-col gap-4 overflow-auto">
+        <div className="flex h-full flex-col gap-4 overflow-auto">
             <HeaderSkeleton />
 
             <div className="rounded-xl border border-border bg-card/40 p-3">
                 <Block className="h-10 rounded-md" />
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                     <Block className="h-7 w-24 rounded-md" />
                     <Block className="h-7 w-24 rounded-md" />
                     <Block className="h-7 w-20 rounded-md" />
                 </div>
             </div>
 
-            <div className="flex gap-3 text-xs">
+            <div className="flex flex-wrap gap-3 text-xs">
                 <Block className="h-7 w-28 rounded-md" />
                 <Block className="h-7 w-20 rounded-md" />
             </div>
@@ -125,4 +125,3 @@ export default function SuperLoading({
         </div>
     );
 }
-

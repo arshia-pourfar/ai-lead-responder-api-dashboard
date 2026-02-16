@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
+import { resolveEmailCredentialCandidates } from "@/lib/services/emailCredentials";
 
 export interface SendAutoReplyResult {
     success: boolean;
@@ -15,10 +16,7 @@ function isAutoEmailEnabled(): boolean {
     return value === "true" || value === "1" || value === "yes";
 }
 
-function buildSmtpConfigs(): SMTPTransport.Options[] {
-    const user = process.env.EMAIL_USER || "";
-    const pass = process.env.EMAIL_PASS || "";
-
+function buildSmtpConfigs(user: string, pass: string): SMTPTransport.Options[] {
     const base: SMTPTransport.Options = {
         auth: { user, pass },
         tls: {
@@ -46,7 +44,6 @@ function buildSmtpConfigs(): SMTPTransport.Options[] {
         });
     }
 
-    // Gmail SSL first (usually more stable than STARTTLS on blocked networks)
     configs.push({
         ...base,
         host: "smtp.gmail.com",
@@ -55,7 +52,6 @@ function buildSmtpConfigs(): SMTPTransport.Options[] {
         requireTLS: false,
     });
 
-    // STARTTLS fallback
     configs.push({
         ...base,
         host: "smtp.gmail.com",
@@ -73,10 +69,22 @@ function extractErrorMessage(err: unknown): string {
     return "SMTP send failed";
 }
 
+function isSmtpAuthenticationFailure(err: unknown): boolean {
+    const message = extractErrorMessage(err).toLowerCase();
+    return (
+        message.includes("invalid login") ||
+        message.includes("authentication") ||
+        message.includes("auth") ||
+        message.includes("535") ||
+        message.includes("username and password not accepted")
+    );
+}
+
 export async function sendAutoReplyDetailed(
     email: string,
     reply: string,
-    category: string
+    category: string,
+    userId?: string
 ): Promise<SendAutoReplyResult> {
     const recipient = (email || "").trim();
     const replyText = (reply || "").trim();
@@ -93,8 +101,9 @@ export async function sendAutoReplyDetailed(
         return { success: false, error: "AUTO_EMAIL is disabled" };
     }
 
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        return { success: false, error: "EMAIL_USER or EMAIL_PASS is missing" };
+    const credentialCandidates = await resolveEmailCredentialCandidates(userId);
+    if (credentialCandidates.length === 0) {
+        return { success: false, error: "Email credentials are missing" };
     }
 
     let subject = "Thanks for contacting us";
@@ -102,28 +111,51 @@ export async function sendAutoReplyDetailed(
     else if (category === "sales") subject = "Pricing & Sales inquiry";
     else if (category === "complaint") subject = "Complaint received";
 
-    const smtpConfigs = buildSmtpConfigs();
     const errors: string[] = [];
 
-    for (const config of smtpConfigs) {
-        const transporter = nodemailer.createTransport(config);
-        try {
-            await transporter.sendMail({
-                from: `"Support Team" <${process.env.EMAIL_USER}>`,
-                to: recipient,
-                subject,
-                text: replyText,
-                html: `<p>${replyText}</p>`,
-            });
-            transporter.close();
-            return { success: true };
-        } catch (err) {
-            transporter.close();
-            const message = extractErrorMessage(err);
-            const endpoint = `${config.host}:${config.port}`;
-            errors.push(`${endpoint} -> ${message}`);
-            console.error("Email send error:", endpoint, err);
+    for (let index = 0; index < credentialCandidates.length; index += 1) {
+        const credentials = credentialCandidates[index];
+        const smtpConfigs = buildSmtpConfigs(
+            credentials.emailAddress,
+            credentials.appPassword
+        );
+        const candidateErrors: string[] = [];
+        let hasAuthFailure = false;
+
+        for (const config of smtpConfigs) {
+            const transporter = nodemailer.createTransport(config);
+            try {
+                await transporter.sendMail({
+                    from: `"Support Team" <${credentials.emailAddress}>`,
+                    to: recipient,
+                    subject,
+                    text: replyText,
+                    html: `<p>${replyText}</p>`,
+                });
+                transporter.close();
+                return { success: true };
+            } catch (err) {
+                transporter.close();
+                const message = extractErrorMessage(err);
+                const endpoint = `${config.host}:${config.port}`;
+                candidateErrors.push(`${endpoint} -> ${message}`);
+                hasAuthFailure = hasAuthFailure || isSmtpAuthenticationFailure(err);
+                console.error("Email send error:", endpoint, err);
+            }
         }
+
+        const hasNextCredential = index < credentialCandidates.length - 1;
+        const canFallback = credentials.source === "user" && hasNextCredential && hasAuthFailure;
+        if (canFallback) {
+            console.warn(
+                `SMTP authentication failed for user credentials (${credentials.emailAddress}); trying fallback credentials.`
+            );
+            continue;
+        }
+
+        errors.push(
+            `[${credentials.source}:${credentials.emailAddress}] ${candidateErrors.join(" | ")}`
+        );
     }
 
     return {
@@ -135,8 +167,9 @@ export async function sendAutoReplyDetailed(
 export async function sendAutoReply(
     email: string,
     reply: string,
-    category: string
+    category: string,
+    userId?: string
 ): Promise<boolean> {
-    const result = await sendAutoReplyDetailed(email, reply, category);
+    const result = await sendAutoReplyDetailed(email, reply, category, userId);
     return result.success;
 }

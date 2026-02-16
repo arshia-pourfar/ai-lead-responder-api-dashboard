@@ -4,11 +4,11 @@ export default function Stat({
     color,
 }: {
     label: string;
-    value: number;
+    value: number | string;
     color: string;
 }) {
     return (
-        <div className={`border border-border px-3 py-1 rounded-md ${color}`}>
+        <div className={`rounded-md border border-border px-3 py-1 text-xs sm:text-sm ${color}`}>
             {label}: {value}
         </div>
     );

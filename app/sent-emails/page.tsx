@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Check, Sparkles } from "lucide-react";
+import { Search, CheckCheck, Sparkles } from "lucide-react";
 import EmailItem from "@/components/email/EmailItem";
 import EmailDetailModal, { EmailModalData } from "@/components/email/EmailDetailModal";
 import Select from "@/components/ui/Select";
@@ -13,7 +13,7 @@ import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { filterEmailsByQuery } from "@/lib/utils/filterEmails";
 
 interface Email extends EmailModalData {
-    tag?: "ready" | "sent" | "unread" | "important";
+    tag?: "sent";
     category?: string;
     confidence?: "high" | "medium" | "low";
 }
@@ -28,10 +28,10 @@ interface SettingsPayload {
 }
 
 const BASE_CATEGORY_OPTIONS = [
+    { label: "Sent", value: "sent" },
     { label: "Ready", value: "ready" },
     { label: "Unread", value: "unread" },
     { label: "Important", value: "important" },
-    { label: "Sent", value: "sent" },
 ];
 
 const CONFIDENCE_OPTIONS = [
@@ -70,13 +70,13 @@ function toTitleCase(value: string): string {
         .join(" ");
 }
 
-export default function ReadyToSendPage() {
+export default function SentEmailsPage() {
     const [emails, setEmails] = useState<Email[]>([]);
     const [total, setTotal] = useState(0);
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [category, setCategory] = useState("ready");
+    const [category, setCategory] = useState("sent");
     const [confidence, setConfidence] = useState("all");
     const [date, setDate] = useState("all");
     const [sort, setSort] = useState("newest");
@@ -95,7 +95,6 @@ export default function ReadyToSendPage() {
                     cache: "no-store",
                 });
                 if (!res.ok) return;
-
                 const data: SettingsPayload = await res.json();
                 if (!cancelled) {
                     setCustomCategories(
@@ -129,7 +128,7 @@ export default function ReadyToSendPage() {
                     offset: String((currentPage - 1) * pageSize),
                 });
 
-                const res = await fetch(`/api/ready-to-send?${params.toString()}`, {
+                const res = await fetch(`/api/sent-emails?${params.toString()}`, {
                     credentials: "include",
                     cache: "no-store",
                     signal: controller.signal,
@@ -139,7 +138,7 @@ export default function ReadyToSendPage() {
                     const message =
                         !Array.isArray(data) && "error" in (data as object)
                             ? String((data as { error?: string }).error || "")
-                            : "Failed to fetch ready emails";
+                            : "Failed to fetch sent emails";
                     throw new Error(message);
                 }
 
@@ -154,7 +153,7 @@ export default function ReadyToSendPage() {
             } catch (fetchError) {
                 if ((fetchError as Error).name === "AbortError") return;
                 console.error(fetchError);
-                setError("Could not load ready emails.");
+                setError("Could not load sent emails.");
                 setEmails([]);
                 setTotal(0);
             } finally {
@@ -201,15 +200,6 @@ export default function ReadyToSendPage() {
     }, [currentPage, totalPages]);
 
     const updateEmail = (id: string, updated: Partial<Email>) => {
-        if (updated.tag === "sent") {
-            setEmails((prev) => prev.filter((email) => email.id !== id));
-            setTotal((prev) => Math.max(0, prev - 1));
-            setSelectedEmail((prev) =>
-                prev && prev.id === id ? { ...prev, ...updated } : prev
-            );
-            return;
-        }
-
         setEmails((prev) =>
             prev.map((email) => (email.id === id ? { ...email, ...updated } : email))
         );
@@ -261,16 +251,16 @@ export default function ReadyToSendPage() {
         setSelectedEmail(null);
     };
 
-    if (loading) return <SuperLoading variant="list" label="Loading ready emails" />;
+    if (loading) return <SuperLoading variant="list" label="Loading sent emails" />;
 
     return (
         <div className="flex h-full min-w-0 flex-col gap-4 overflow-auto">
             <PageHeader
-                title="Ready To Send"
-                subtitle="AI Replies Waiting Approval"
+                title="Sent Emails"
+                subtitle="History of delivered replies"
                 stats={[
-                    { icon: Sparkles, label: "AI Accuracy", value: "91%", color: "text-primary" },
-                    { icon: Check, label: "Pending Approvals", value: total, color: "text-success" },
+                    { icon: Sparkles, label: "Delivery", value: "Stable", color: "text-primary" },
+                    { icon: CheckCheck, label: "Total Sent", value: total, color: "text-success" },
                 ]}
             />
 
@@ -318,13 +308,12 @@ export default function ReadyToSendPage() {
                         body={email.body || ""}
                         aiReply={email.aiReply || ""}
                         manualReply={email.manualReply || ""}
-                        tag="ready"
+                        tag="sent"
                         onSelect={() => setSelectedEmail(email)}
-                        onUpdateEmail={updateEmail}
                     />
                 ))}
                 {!error && filteredEmails.length === 0 && (
-                    <p className="text-xs text-muted">No emails found</p>
+                    <p className="text-xs text-muted">No sent emails found</p>
                 )}
             </div>
 

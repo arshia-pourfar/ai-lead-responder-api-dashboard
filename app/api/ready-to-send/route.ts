@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-type CategoryFilter = "all" | "unread" | "ready" | "important" | "sent";
+type CategoryFilter = string;
 type ConfidenceFilter = "all" | "high" | "medium" | "low";
 type DateFilter = "all" | "today" | "7d" | "30d" | "90d";
 type SortFilter =
@@ -21,11 +21,8 @@ type SortFilter =
     | "confidence_desc";
 
 function normalizeCategoryFilter(value: string | null): CategoryFilter {
-    const normalized = (value || "ready").toLowerCase();
-    if (normalized === "all" || normalized === "unread" || normalized === "ready" || normalized === "important" || normalized === "sent") {
-        return normalized;
-    }
-    return "ready";
+    const normalized = (value || "ready").trim().toLowerCase();
+    return normalized || "ready";
 }
 
 function normalizeConfidenceFilter(value: string | null): ConfidenceFilter {
@@ -70,7 +67,8 @@ function getCategoryWhere(category: CategoryFilter): Prisma.EmailWhereInput {
         };
     }
     if (category === "sent") return { OR: [{ status: "sent" }, { tag: "sent" }] };
-    return { OR: [{ readyToSend: true }, { status: "ready_send" }] };
+    if (category === "ready") return { OR: [{ readyToSend: true }, { status: "ready_send" }] };
+    return { category };
 }
 
 function getConfidenceWhere(confidence: ConfidenceFilter): Prisma.EmailWhereInput {
@@ -136,6 +134,54 @@ function getConfidenceLabel(rank: number): "high" | "medium" | "low" {
     return "low";
 }
 
+function getPaginationParams(req: NextRequest): { enabled: boolean; limit: number; offset: number } {
+    const hasLimit = req.nextUrl.searchParams.has("limit");
+    const hasOffset = req.nextUrl.searchParams.has("offset");
+    const rawLimit = Number.parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
+    const rawOffset = Number.parseInt(req.nextUrl.searchParams.get("offset") ?? "0", 10);
+
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    return { enabled: hasLimit || hasOffset, limit, offset };
+}
+
+function mapEmailResponse(email: {
+    id: string;
+    subject: string;
+    body: string;
+    aiReply: string | null;
+    manualReply: string | null;
+    senderEmail: string | null;
+    category: string;
+    createdAt: Date;
+    readyToSell: boolean;
+}): {
+    id: string;
+    subject: string;
+    body: string;
+    aiReply: string | null;
+    manualReply: string | null;
+    sender: string;
+    category: string;
+    confidence: "high" | "medium" | "low";
+    createdAt: Date;
+    tag: "ready";
+} {
+    return {
+        id: email.id,
+        subject: email.subject,
+        body: email.body,
+        aiReply: email.aiReply,
+        manualReply: email.manualReply,
+        sender: email.senderEmail ?? "unknown",
+        category: email.category,
+        confidence: getConfidenceLabel(getConfidenceRank(email)),
+        createdAt: email.createdAt,
+        tag: "ready",
+    };
+}
+
 interface ReadyToSendBody {
     emailId?: string;
     subject?: string;
@@ -169,6 +215,7 @@ export async function GET(req: NextRequest) {
         const dateFilter = normalizeDateFilter(req.nextUrl.searchParams.get("date"));
         const sortFilter = normalizeSortFilter(req.nextUrl.searchParams.get("sort"));
         const confidenceSort = sortFilter === "confidence_asc" || sortFilter === "confidence_desc";
+        const pagination = getPaginationParams(req);
 
         const where: Prisma.EmailWhereInput = {
             userId: user.id,
@@ -178,6 +225,25 @@ export async function GET(req: NextRequest) {
                 getDateWhere(dateFilter),
             ],
         };
+
+        if (pagination.enabled && !confidenceSort) {
+            const [total, emails] = await Promise.all([
+                prisma.email.count({ where }),
+                prisma.email.findMany({
+                    where,
+                    orderBy: getOrderBy(sortFilter),
+                    skip: pagination.offset,
+                    take: pagination.limit,
+                }),
+            ]);
+
+            return NextResponse.json({
+                emails: emails.map(mapEmailResponse),
+                total,
+                limit: pagination.limit,
+                offset: pagination.offset,
+            });
+        }
 
         const emails = await prisma.email.findMany({
             where,
@@ -191,20 +257,21 @@ export async function GET(req: NextRequest) {
             })
             : emails;
 
-        return NextResponse.json(
-            sortedEmails.map((email) => ({
-                id: email.id,
-                subject: email.subject,
-                body: email.body,
-                aiReply: email.aiReply,
-                manualReply: email.manualReply,
-                sender: email.senderEmail ?? "unknown",
-                category: email.category,
-                confidence: getConfidenceLabel(getConfidenceRank(email)),
-                createdAt: email.createdAt,
-                tag: "ready" as const,
-            }))
-        );
+        if (pagination.enabled) {
+            const pagedEmails = sortedEmails.slice(
+                pagination.offset,
+                pagination.offset + pagination.limit
+            );
+
+            return NextResponse.json({
+                emails: pagedEmails.map(mapEmailResponse),
+                total: sortedEmails.length,
+                limit: pagination.limit,
+                offset: pagination.offset,
+            });
+        }
+
+        return NextResponse.json(sortedEmails.map(mapEmailResponse));
     } catch (error) {
         console.error("READY TO SEND GET ERROR:", error);
         return NextResponse.json([], { status: 500 });
@@ -278,7 +345,8 @@ export async function POST(req: NextRequest) {
             const sendResult = await sendAutoReplyDetailed(
                 targetEmail,
                 replyForSend,
-                existingEmail.category || "general"
+                existingEmail.category || "general",
+                user.id
             );
 
             if (!sendResult.success) {
@@ -310,7 +378,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "sender must be a valid email" }, { status: 400 });
         }
 
-        const detectedCategory = await detectCategory((body.body ?? finalReply).trim());
+        const detectedCategory = await detectCategory((body.body ?? finalReply).trim(), user.id);
 
         if (emailId) {
             const existingEmail = await prisma.email.findFirst({

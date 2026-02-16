@@ -1,0 +1,4 @@
+ALTER TABLE "User"
+ADD COLUMN IF NOT EXISTS "emailAddress" TEXT,
+ADD COLUMN IF NOT EXISTS "emailAppPasswordHash" TEXT,
+ADD COLUMN IF NOT EXISTS "emailAppPasswordEncrypted" TEXT;

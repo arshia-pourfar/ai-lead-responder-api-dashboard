@@ -164,7 +164,8 @@ export async function GET(req: NextRequest) {
         const unread = await withTimeout(
             readUnreadEmailsPaginated(
                 requiresGlobalFiltering ? Number.MAX_SAFE_INTEGER : limit,
-                requiresGlobalFiltering ? 0 : effectiveOffset
+                requiresGlobalFiltering ? 0 : effectiveOffset,
+                user.id
             ),
             UNREAD_FETCH_TIMEOUT_MS
         );
@@ -289,7 +290,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "Valid emailId is required for ignore" }, { status: 400 });
             }
 
-            await markEmailAsSeenByUid(uid);
+            await markEmailAsSeenByUid(uid, user.id);
             unreadCache.clear();
             return NextResponse.json({ success: true, ignored: true, emailId: body.emailId }, { status: 200 });
         }
@@ -314,10 +315,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Valid emailId is required for approve" }, { status: 400 });
         }
 
-        await markEmailAsSeenByUid(uid);
+        await markEmailAsSeenByUid(uid, user.id);
         unreadCache.clear();
 
-        const detectedCategory = await detectCategory((body.body || finalReply).trim());
+        const detectedCategory = await detectCategory((body.body || finalReply).trim(), user.id);
 
         const emailData = {
             subject: body.subject,

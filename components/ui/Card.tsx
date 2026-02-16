@@ -10,16 +10,16 @@ export default function Card({
     children: React.ReactNode;
 }) {
     return (
-        <div className="border border-border rounded-2xl p-3 h-full flex flex-col shadow-sm transition duration-150 bg-card/40 backdrop-blur-sm">
+        <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card p-3 shadow-sm backdrop-blur-sm transition duration-150">
 
             {/* HEADER */}
-            <div className="mb-2 flex items-center justify-between">
-                <div>{title}</div>
-                {actions && <div>{actions}</div>}
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">{title}</div>
+                {actions && <div className="shrink-0">{actions}</div>}
             </div>
 
             {/* BODY */}
-            <div className="flex-1 overflow-y-auto pe-1 scrollbar-thin">
+            <div className="scrollbar-thin flex-1 overflow-y-auto pe-1 min-h-0">
                 {children}
             </div>
 

@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-type CategoryFilter = "all" | "unread" | "ready" | "important" | "sent";
+type CategoryFilter = string;
 type ConfidenceFilter = "all" | "high" | "medium" | "low";
 type DateFilter = "all" | "today" | "7d" | "30d" | "90d";
 type SortFilter =
@@ -19,11 +19,8 @@ type SortFilter =
     | "confidence_desc";
 
 function normalizeCategoryFilter(value: string | null): CategoryFilter {
-    const normalized = (value || "important").toLowerCase();
-    if (normalized === "all" || normalized === "unread" || normalized === "ready" || normalized === "important" || normalized === "sent") {
-        return normalized;
-    }
-    return "important";
+    const normalized = (value || "important").trim().toLowerCase();
+    return normalized || "important";
 }
 
 function normalizeConfidenceFilter(value: string | null): ConfidenceFilter {
@@ -64,9 +61,12 @@ function getCategoryWhere(category: CategoryFilter): Prisma.EmailWhereInput {
     if (category === "unread") return { tag: "unread" };
     if (category === "ready") return { OR: [{ readyToSend: true }, { status: "ready_send" }] };
     if (category === "sent") return { OR: [{ status: "sent" }, { tag: "sent" }] };
-    return {
-        OR: [{ readyToSell: true }, { tag: "important" }, { category: "sales" }],
-    };
+    if (category === "important") {
+        return {
+            OR: [{ readyToSell: true }, { tag: "important" }, { category: "sales" }],
+        };
+    }
+    return { category };
 }
 
 function getConfidenceWhere(confidence: ConfidenceFilter): Prisma.EmailWhereInput {
@@ -132,6 +132,59 @@ function getConfidenceLabel(rank: number): "high" | "medium" | "low" {
     return "low";
 }
 
+function getPaginationParams(req: NextRequest): { enabled: boolean; limit: number; offset: number } {
+    const hasLimit = req.nextUrl.searchParams.has("limit");
+    const hasOffset = req.nextUrl.searchParams.has("offset");
+    const rawLimit = Number.parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10);
+    const rawOffset = Number.parseInt(req.nextUrl.searchParams.get("offset") ?? "0", 10);
+
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    return { enabled: hasLimit || hasOffset, limit, offset };
+}
+
+function mapEmailResponse(email: {
+    id: string;
+    subject: string;
+    senderEmail: string | null;
+    body: string;
+    aiReply: string | null;
+    manualReply: string | null;
+    category: string;
+    readyToSell: boolean;
+    accountId: string | null;
+    createdAt: Date;
+}): {
+    id: string;
+    subject: string;
+    sender: string;
+    tag: "important";
+    body: string;
+    aiReply: string;
+    manualReply: string;
+    confidence: "high" | "medium" | "low";
+    sellScore: number;
+    accountId: string | null;
+    createdAt: Date;
+} {
+    const confidenceRank = getConfidenceRank(email);
+
+    return {
+        id: email.id,
+        subject: email.subject || "No subject",
+        sender: email.senderEmail ?? "unknown",
+        tag: "important",
+        body: email.body || "No body available",
+        aiReply: email.aiReply || "",
+        manualReply: email.manualReply || "",
+        confidence: getConfidenceLabel(confidenceRank),
+        sellScore: confidenceRank,
+        accountId: email.accountId,
+        createdAt: email.createdAt,
+    };
+}
+
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
     if (!user || typeof user !== "object" || !("id" in user)) {
@@ -144,6 +197,7 @@ export async function GET(req: NextRequest) {
         const dateFilter = normalizeDateFilter(req.nextUrl.searchParams.get("date"));
         const sortFilter = normalizeSortFilter(req.nextUrl.searchParams.get("sort"));
         const confidenceSort = sortFilter === "confidence_asc" || sortFilter === "confidence_desc";
+        const pagination = getPaginationParams(req);
 
         const where: Prisma.EmailWhereInput = {
             userId: user.id,
@@ -153,6 +207,26 @@ export async function GET(req: NextRequest) {
                 getDateWhere(dateFilter),
             ],
         };
+
+        if (pagination.enabled && !confidenceSort) {
+            const [total, emails] = await Promise.all([
+                prisma.email.count({ where }),
+                prisma.email.findMany({
+                    where,
+                    include: { account: true },
+                    orderBy: getOrderBy(sortFilter),
+                    skip: pagination.offset,
+                    take: pagination.limit,
+                }),
+            ]);
+
+            return NextResponse.json({
+                emails: emails.map(mapEmailResponse),
+                total,
+                limit: pagination.limit,
+                offset: pagination.offset,
+            });
+        }
 
         const emails = await prisma.email.findMany({
             where,
@@ -167,20 +241,21 @@ export async function GET(req: NextRequest) {
             })
             : emails;
 
-        const response = sortedEmails.map((email) => ({
-            id: email.id,
-            subject: email.subject || "No subject",
-            sender: email.senderEmail ?? "unknown",
-            tag: "important" as const,
-            body: email.body || "No body available",
-            aiReply: email.aiReply || "",
-            confidence: getConfidenceLabel(getConfidenceRank(email)),
-            sellScore: getConfidenceRank(email),
-            accountId: email.accountId,
-            createdAt: email.createdAt,
-        }));
+        if (pagination.enabled) {
+            const pagedEmails = sortedEmails.slice(
+                pagination.offset,
+                pagination.offset + pagination.limit
+            );
 
-        return NextResponse.json(response);
+            return NextResponse.json({
+                emails: pagedEmails.map(mapEmailResponse),
+                total: sortedEmails.length,
+                limit: pagination.limit,
+                offset: pagination.offset,
+            });
+        }
+
+        return NextResponse.json(sortedEmails.map(mapEmailResponse));
     } catch (error) {
         console.error("READY TO SELL ERROR:", error);
         return NextResponse.json([], { status: 500 });
