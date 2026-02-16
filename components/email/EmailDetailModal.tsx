@@ -105,7 +105,7 @@ export default function EmailDetailModal({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4">
             <div className="flex max-h-[95dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-bg sm:max-h-[90vh]">
                 <div className="border-b border-border px-4 py-3 sm:px-6 sm:py-4">
-                    <h3 className="break-words text-base font-semibold sm:text-lg">{email.subject || "No Subject"}</h3>
+                    <h3 className="wrap-break-word text-base font-semibold sm:text-lg">{email.subject || "No Subject"}</h3>
                     <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted">
                         <span>Sender: {email.sender || "unknown"}</span>
                         <span>Date: {formatDate(email.createdAt)}</span>
@@ -116,7 +116,7 @@ export default function EmailDetailModal({
                 <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
                     <div className="border border-border rounded-lg p-3 bg-card/30">
                         <p className="text-xs font-semibold text-muted mb-2">Email Body</p>
-                        <p className="text-sm text-text whitespace-pre-wrap break-words">
+                        <p className="text-sm text-text whitespace-pre-wrap wrap-break-word">
                             {email.body || "No content"}
                         </p>
                     </div>
@@ -130,7 +130,7 @@ export default function EmailDetailModal({
                                 className="h-40 w-full resize-none rounded-md border border-border bg-bg/60 p-2 text-sm"
                             />
                         ) : (
-                            <p className="text-sm text-text whitespace-pre-wrap break-words">
+                            <p className="text-sm text-text whitespace-pre-wrap wrap-break-word">
                                 {replyText || "No AI reply available"}
                             </p>
                         )}

@@ -22,7 +22,7 @@ export default function Select({ label, value, options, onChange }: SelectProps)
 
     return (
         <select
-            className="w-full min-w-[9rem] rounded-md border border-border bg-bg px-2 py-1 text-xs sm:w-auto"
+            className="w-full min-w-36 rounded-md border border-border bg-bg px-2 py-1 text-xs sm:w-auto"
             value={value}
             onChange={(event) => onChange?.(event.target.value)}
         >

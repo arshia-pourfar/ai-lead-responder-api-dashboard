@@ -204,7 +204,7 @@ export default function EmailItem({
                 <div className="w-3/4 flex flex-col gap-1">
                     <div className="max-w-full flex flex-wrap justify-between items-start gap-2 sm:gap-3">
                         <div className="min-w-0 max-w-3/4">
-                            <p className="break-words text-sm font-semibold text-text">{subject}</p>
+                            <p className="wrap-break-word text-sm font-semibold text-text">{subject}</p>
                             <p className="break-all text-xs text-muted">{sender}</p>
                         </div>
                         <span className={`shrink-0 rounded px-2 py-1 text-xs ${tagMap[tag]}`}>{tag}</span>

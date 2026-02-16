@@ -30,7 +30,7 @@ export default function SignupPage() {
     };
 
     return (
-        <div className="flex min-h-screen h-[100dvh] items-center justify-center p-4">
+        <div className="flex min-h-screen h-screen items-center justify-center p-4">
             <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-card p-6 sm:p-8">
                 <h2 className="text-lg font-semibold">Sign Up</h2>
                 {error && <p className="text-red-500 text-xs">{error}</p>}
