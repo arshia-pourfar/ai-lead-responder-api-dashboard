@@ -23,7 +23,7 @@ export default function PageHeader({
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             {/* LEFT */}
             <div className="min-w-0 flex-1">
-                <h1 className="break-words text-lg font-semibold text-text sm:text-xl">{title}</h1>
+                <h1 className="wrap-break-word text-lg font-semibold text-text sm:text-xl">{title}</h1>
                 {subtitle && <p className="text-sm text-muted mt-1">{subtitle}</p>}
 
                 {/* STATS */}
