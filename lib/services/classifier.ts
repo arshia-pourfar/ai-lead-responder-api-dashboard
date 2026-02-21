@@ -1,20 +1,8 @@
-import fetch from "node-fetch";
-import dotenv from "dotenv";
 import { buildClassifierCategories, getUserAiSettings } from "@/lib/services/userSettings";
-dotenv.config();
-
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+import { generateAiText } from "@/lib/services/aiClient";
 const FALLBACK_CATEGORY = "general";
 
 export type EmailCategory = string;
-
-interface GeminiCategoryResponse {
-    candidates?: Array<{
-        content?: {
-            parts?: Array<{ text?: string }>;
-        };
-    }>;
-}
 
 export function normalizeCategory(value: string | null | undefined): EmailCategory {
     const category = (value || "").trim().toLowerCase();
@@ -36,9 +24,6 @@ function normalizeCategoryWithFallback(
 export async function detectCategory(message: string, userId?: string): Promise<EmailCategory> {
     const normalizedMessage = (message || "").trim();
     if (!normalizedMessage) return FALLBACK_CATEGORY;
-
-    const apiKey = process.env.GEMINI_API_KEY || "";
-    if (!apiKey) return FALLBACK_CATEGORY;
 
     let customPrompt = "";
     let customCategories: string[] = [];
@@ -71,22 +56,11 @@ export async function detectCategory(message: string, userId?: string): Promise<
     Only return the category name exactly as listed above.
   `;
 
-    try {
-        const response = await fetch(GEMINI_API_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-goog-api-key": apiKey,
-            },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        });
+    const rawCategory = await generateAiText(prompt, {
+        userId,
+        temperature: 0,
+        maxTokens: 50,
+    });
 
-        if (!response.ok) return "general";
-
-        const data: unknown = await response.json();
-        const rawCategory = (data as GeminiCategoryResponse)?.candidates?.[0]?.content?.parts?.[0]?.text;
-        return normalizeCategoryWithFallback(rawCategory, allowedCategories, FALLBACK_CATEGORY);
-    } catch {
-        return FALLBACK_CATEGORY;
-    }
+    return normalizeCategoryWithFallback(rawCategory, allowedCategories, FALLBACK_CATEGORY);
 }

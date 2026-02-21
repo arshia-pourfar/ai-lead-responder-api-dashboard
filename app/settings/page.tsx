@@ -4,10 +4,17 @@ import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import PageHeader from "@/components/ui/Header";
 
+type AiProvider = "gemini" | "openai" | "anthropic";
+
 interface SettingsPayload {
     customPrompt: string;
     customCategories: string[];
     defaultCategories: string[];
+    aiSettings: {
+        useDefaultProvider: boolean;
+        provider: AiProvider;
+        hasApiKey: boolean;
+    };
     emailSettings: {
         registrationEmail: string;
         useRegistrationEmail: boolean;
@@ -26,6 +33,10 @@ export default function SettingsPage() {
         "important",
         "sent",
     ]);
+    const [useDefaultAiProvider, setUseDefaultAiProvider] = useState(true);
+    const [aiProvider, setAiProvider] = useState<AiProvider>("gemini");
+    const [aiApiKey, setAiApiKey] = useState("");
+    const [hasSavedAiApiKey, setHasSavedAiApiKey] = useState(false);
 
     const [registrationEmail, setRegistrationEmail] = useState("");
     const [useRegistrationEmail, setUseRegistrationEmail] = useState(true);
@@ -36,6 +47,13 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+
+    const normalizeProvider = (value: unknown): AiProvider => {
+        if (value === "openai" || value === "anthropic" || value === "gemini") {
+            return value;
+        }
+        return "gemini";
+    };
 
     const addParam = () => {
         const normalized = newParam.trim().toLowerCase();
@@ -66,6 +84,11 @@ export default function SettingsPage() {
                     customPrompt: "",
                     customCategories: [],
                     defaultCategories: ["unread", "ready", "important", "sent"],
+                    aiSettings: {
+                        useDefaultProvider: true,
+                        provider: "gemini",
+                        hasApiKey: false,
+                    },
                     emailSettings: {
                         registrationEmail: "",
                         useRegistrationEmail: true,
@@ -87,6 +110,10 @@ export default function SettingsPage() {
                         ? data.defaultCategories
                         : ["unread", "ready", "important", "sent"]
                 );
+                setUseDefaultAiProvider(data.aiSettings?.useDefaultProvider !== false);
+                setAiProvider(normalizeProvider(data.aiSettings?.provider));
+                setHasSavedAiApiKey(Boolean(data.aiSettings?.hasApiKey));
+                setAiApiKey("");
 
                 setRegistrationEmail(data.emailSettings?.registrationEmail || "");
                 setUseRegistrationEmail(
@@ -125,6 +152,11 @@ export default function SettingsPage() {
                 body: JSON.stringify({
                     customPrompt: promptDescription,
                     customCategories: params,
+                    aiSettings: {
+                        useDefaultProvider: useDefaultAiProvider,
+                        provider: aiProvider,
+                        apiKey: aiApiKey,
+                    },
                     emailSettings: {
                         useRegistrationEmail,
                         emailAddress,
@@ -155,6 +187,10 @@ export default function SettingsPage() {
                     ? payload.defaultCategories
                     : ["unread", "ready", "important", "sent"]
             );
+            setUseDefaultAiProvider(payload.aiSettings?.useDefaultProvider !== false);
+            setAiProvider(normalizeProvider(payload.aiSettings?.provider));
+            setHasSavedAiApiKey(Boolean(payload.aiSettings?.hasApiKey));
+            setAiApiKey("");
 
             setRegistrationEmail(payload.emailSettings?.registrationEmail || "");
             setUseRegistrationEmail(
@@ -224,6 +260,50 @@ export default function SettingsPage() {
                     />
                     <p className="text-xs text-muted">
                         Password is hashed and encrypted at rest. Leave blank to keep current password.
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-2 text-sm">
+                    <label className="font-medium">AI Provider Settings</label>
+                    <label className="flex items-center gap-2 text-xs text-muted">
+                        <input
+                            type="checkbox"
+                            checked={useDefaultAiProvider}
+                            onChange={(event) =>
+                                setUseDefaultAiProvider(event.target.checked)
+                            }
+                        />
+                        Use default AI provider and API key
+                    </label>
+
+                    <select
+                        value={aiProvider}
+                        onChange={(event) =>
+                            setAiProvider(normalizeProvider(event.target.value))
+                        }
+                        disabled={useDefaultAiProvider}
+                        className="border border-border rounded-md px-3 py-2 outline-none text-sm disabled:opacity-60"
+                    >
+                        <option value="gemini">Gemini</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                    </select>
+
+                    <input
+                        type="password"
+                        value={aiApiKey}
+                        onChange={(event) => setAiApiKey(event.target.value)}
+                        disabled={useDefaultAiProvider}
+                        placeholder={
+                            hasSavedAiApiKey
+                                ? "****************"
+                                : "Enter provider API key"
+                        }
+                        className="border border-border rounded-md px-3 py-2 outline-none text-sm disabled:opacity-60"
+                        autoComplete="new-password"
+                    />
+                    <p className="text-xs text-muted">
+                        Leave blank to keep current key.
                     </p>
                 </div>
 
