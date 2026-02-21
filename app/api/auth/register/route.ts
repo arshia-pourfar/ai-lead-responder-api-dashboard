@@ -1,28 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { hash } from "bcryptjs";
-import crypto from "crypto";
+import { registerUser, RegistrationError } from "@/lib/services/auth/registrationService";
+import {
+    getFirstValidationError,
+    registerSchema,
+} from "@/lib/validation/authSchemas";
 
 export async function POST(req: NextRequest) {
     try {
-        const { name, email, password } = await req.json();
-        if (!name || !email || !password)
-            return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+        const body = await req.json().catch(() => null);
+        const parsed = registerSchema.safeParse(body);
+        if (!parsed.success) {
+            return NextResponse.json(
+                { error: getFirstValidationError(parsed.error) },
+                { status: 400 }
+            );
+        }
 
-        const existing = await prisma.user.findUnique({ where: { email } });
-        if (existing)
-            return NextResponse.json({ error: "User already exists" }, { status: 400 });
-
-        const hashedPassword = await hash(password, 10);
-        const accessCode = crypto.randomBytes(8).toString("hex");
-
-        const user = await prisma.user.create({
-            data: { name, email, password: hashedPassword, accessCode },
-        });
-
-        return NextResponse.json({ id: user.id, email: user.email });
+        const user = await registerUser(parsed.data);
+        return NextResponse.json(
+            {
+                id: user.id,
+                email: user.email,
+                message: "Signup successful. Please verify your email with the code we sent.",
+            },
+            { status: 201 }
+        );
     } catch (err) {
-        console.log(err);
+        if (err instanceof RegistrationError) {
+            if (err.code === "USER_EXISTS") {
+                return NextResponse.json({ error: err.message }, { status: 400 });
+            }
+
+            if (err.code === "EMAIL_SEND_FAILED") {
+                return NextResponse.json({ error: err.message }, { status: 500 });
+            }
+        }
+
         return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 }

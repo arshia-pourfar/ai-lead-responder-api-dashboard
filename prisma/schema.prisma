@@ -12,6 +12,9 @@ model User {
   name        String   @default("") // اضافه شد
   email       String   @unique
   password    String
+  isVerified  Boolean  @default(false)
+  verificationCode String?
+  verificationCodeExpiresAt DateTime?
   emailAddress String?
   emailAppPasswordHash String?
   emailAppPasswordEncrypted String?

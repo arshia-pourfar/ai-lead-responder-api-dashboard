@@ -7,11 +7,13 @@ export default function SignupPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
     const router = useRouter();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
+        setLoading(true);
 
         try {
             const res = await fetch("/api/auth/register", {
@@ -22,10 +24,12 @@ export default function SignupPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Signup failed");
 
-            router.push("/login");
+            router.push(`/verify?email=${encodeURIComponent(email.trim())}`);
         } catch (err: unknown) {
             if (err instanceof Error) setError(err.message);
             else setError("Unknown error occurred");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -39,7 +43,9 @@ export default function SignupPage() {
                 <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="border border-border rounded-md px-3 py-2 outline-none text-sm" />
                 <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="border border-border rounded-md px-3 py-2 outline-none text-sm" />
 
-                <button className="bg-primary text-white py-2 rounded-md hover:bg-primary/80 text-sm">Sign Up</button>
+                <button disabled={loading} className="bg-primary text-white py-2 rounded-md hover:bg-primary/80 text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                    {loading ? "Creating account..." : "Sign Up"}
+                </button>
                 <p className="text-xs text-muted">
                     Already have an account? <a href="/login" className="text-primary hover:underline">Login</a>
                 </p>
