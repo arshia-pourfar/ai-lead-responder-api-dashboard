@@ -8,78 +8,68 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  name        String   @default("") // اضافه شد
-  email       String   @unique
-  password    String
-  isVerified  Boolean  @default(false)
-  verificationCode String?
+  id                        String         @id @default(uuid())
+  name                      String         @default("")
+  email                     String         @unique
+  password                  String
+  isVerified                Boolean        @default(false)
+  verificationCode          String?
   verificationCodeExpiresAt DateTime?
-  emailAddress String?
-  emailAppPasswordHash String?
+  plan                      String         @default("free")
+  apiKey                    String?        @unique
+  accessCode                String         @unique
+  deviceLimit               Int            @default(1)
+  createdAt                 DateTime       @default(now())
+  emailAddress              String?
   emailAppPasswordEncrypted String?
-  plan        String   @default("free")
-  apiKey      String?  @unique
-  accessCode  String   @unique
-  deviceLimit Int      @default(1)
-  createdAt   DateTime @default(now())
-
-  // relations
-  emails        Email[]
-  emailAccounts EmailAccount[]
-  prompts       Prompt[]
-  categories    Category[]
+  emailAppPasswordHash      String?
+  categories                Category[]
+  emails                    Email[]
+  emailAccounts             EmailAccount[]
+  prompts                   Prompt[]
 }
 
 model EmailAccount {
-  id       String @id @default(uuid())
+  id       String  @id @default(uuid())
   provider String
   email    String
-
-  // relations
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  emails Email[]
+  userId   String
+  emails   Email[]
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Email {
-  id          String   @id @default(uuid())
+  id          String        @id @default(uuid())
   subject     String
   body        String
   aiReply     String?
   manualReply String?
-  category    String   @default("general")
-  status      String   @default("draft") // draft, ready_send, sent, analyzed
-  tag         String   @default("unread") // unread, read, sent, important
-  readyToSend Boolean  @default(false)
-  readyToSell Boolean  @default(false)
-  createdAt   DateTime @default(now())
-
-  // relations
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  account   EmailAccount? @relation(fields: [accountId], references: [id])
-  accountId String?
-  senderEmail String?   
+  category    String        @default("general")
+  status      String        @default("draft")
+  tag         String        @default("unread")
+  readyToSend Boolean       @default(false)
+  readyToSell Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  userId      String
+  accountId   String?
+  senderEmail String?
+  account     EmailAccount? @relation(fields: [accountId], references: [id])
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Prompt {
   id      String @id @default(uuid())
   title   String
   content String
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Category {
-  id   String @id @default(uuid())
-  name String
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  name   String
   userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum EmailStatus {

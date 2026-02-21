@@ -9,12 +9,29 @@ interface SendEmailPayload {
 
 let cachedTransporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
-function getRequiredEnv(name: "EMAIL_HOST" | "EMAIL_PORT" | "EMAIL_USER" | "EMAIL_PASS"): string {
+function getOptionalEnv(name: string) {
     const value = process.env[name]?.trim();
-    if (!value) {
-        throw new Error(`${name} is not configured.`);
+    return value || null;
+}
+
+function getRequiredEnvPair(primary: string, fallback: string) {
+    const primaryValue = getOptionalEnv(primary);
+    if (primaryValue) {
+        return primaryValue;
     }
-    return value;
+
+    const fallbackValue = getOptionalEnv(fallback);
+    if (fallbackValue) {
+        return fallbackValue;
+    }
+
+    throw new Error(`Missing email config: set ${primary} (or ${fallback}).`);
+}
+
+function isTruthy(value: string | null) {
+    if (!value) return false;
+    const normalized = value.toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
 function getTransporter() {
@@ -22,19 +39,21 @@ function getTransporter() {
         return cachedTransporter;
     }
 
-    const host = getRequiredEnv("EMAIL_HOST");
-    const port = Number.parseInt(getRequiredEnv("EMAIL_PORT"), 10);
+    const host = getRequiredEnvPair("EMAIL_HOST", "SMTP_HOST");
+    const portString = getRequiredEnvPair("EMAIL_PORT", "SMTP_PORT");
+    const port = Number.parseInt(portString, 10);
     if (!Number.isFinite(port) || port <= 0) {
-        throw new Error("EMAIL_PORT must be a valid positive number.");
+        throw new Error("EMAIL_PORT/SMTP_PORT must be a valid positive number.");
     }
 
-    const user = getRequiredEnv("EMAIL_USER");
-    const pass = getRequiredEnv("EMAIL_PASS");
+    const user = getRequiredEnvPair("EMAIL_USER", "SMTP_USER");
+    const pass = getRequiredEnvPair("EMAIL_PASS", "SMTP_PASS");
+    const secure = isTruthy(getOptionalEnv("EMAIL_SECURE") ?? getOptionalEnv("SMTP_SECURE")) || port === 465;
 
     cachedTransporter = nodemailer.createTransport({
         host,
         port,
-        secure: port === 465,
+        secure,
         auth: {
             user,
             pass,
@@ -46,7 +65,12 @@ function getTransporter() {
 
 export async function sendEmail(payload: SendEmailPayload) {
     const transporter = getTransporter();
-    const from = process.env.EMAIL_FROM?.trim() || getRequiredEnv("EMAIL_USER");
+    const from =
+        getOptionalEnv("EMAIL_FROM") ||
+        getOptionalEnv("SMTP_FROM") ||
+        getOptionalEnv("EMAIL_USER") ||
+        getOptionalEnv("SMTP_USER") ||
+        getRequiredEnvPair("EMAIL_USER", "SMTP_USER");
 
     await transporter.sendMail({
         from,

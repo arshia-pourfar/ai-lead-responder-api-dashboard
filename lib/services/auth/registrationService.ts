@@ -57,7 +57,17 @@ export async function registerUser({
 
     try {
         await createAndSendVerificationCode(user.id, user.email);
-    } catch {
+    } catch (error) {
+        if (
+            error instanceof Error &&
+            error.message.toLowerCase().includes("missing email config")
+        ) {
+            throw new RegistrationError(
+                "EMAIL_SEND_FAILED",
+                "Email service is not configured. Please set EMAIL_HOST/EMAIL_PORT/EMAIL_USER/EMAIL_PASS."
+            );
+        }
+
         throw new RegistrationError(
             "EMAIL_SEND_FAILED",
             "Could not send verification email. Please try resending the code."
