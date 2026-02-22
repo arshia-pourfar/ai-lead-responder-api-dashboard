@@ -67,17 +67,16 @@ function getRequiredEnv(names: readonly string[]) {
         return value;
     }
 
-    if (EMAIL_CONFIG_DIAGNOSTICS) {
-        const diagnostics = names.reduce<Record<string, boolean>>((acc, key) => {
-            acc[key] = Boolean(getOptionalEnv(key));
-            return acc;
-        }, {});
-        console.error("[mailer] Missing email config", {
-            checkedKeys: diagnostics,
-            nodeEnv: process.env.NODE_ENV || null,
-            vercelEnv: process.env.VERCEL_ENV || null,
-        });
-    }
+    const diagnostics = names.reduce<Record<string, boolean>>((acc, key) => {
+        acc[key] = Boolean(getOptionalEnv(key));
+        return acc;
+    }, {});
+    console.error("[mailer] Missing email config", {
+        checkedKeys: diagnostics,
+        nodeEnv: process.env.NODE_ENV || null,
+        vercelEnv: process.env.VERCEL_ENV || null,
+        diagnosticsEnabled: EMAIL_CONFIG_DIAGNOSTICS,
+    });
 
     throw new Error(`Missing email config: set one of ${names.join(", ")}.`);
 }
