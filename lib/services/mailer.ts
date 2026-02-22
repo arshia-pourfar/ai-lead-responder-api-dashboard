@@ -28,6 +28,10 @@ function getRequiredEnvPair(primary: string, fallback: string) {
     throw new Error(`Missing email config: set ${primary} (or ${fallback}).`);
 }
 
+function getOptionalEnvPair(primary: string, fallback: string) {
+    return getOptionalEnv(primary) || getOptionalEnv(fallback);
+}
+
 function isTruthy(value: string | null) {
     if (!value) return false;
     const normalized = value.toLowerCase();
@@ -39,16 +43,20 @@ function getTransporter() {
         return cachedTransporter;
     }
 
-    const host = getRequiredEnvPair("EMAIL_HOST", "SMTP_HOST");
-    const portString = getRequiredEnvPair("EMAIL_PORT", "SMTP_PORT");
+    const host = getOptionalEnvPair("EMAIL_HOST", "SMTP_HOST") || "smtp.gmail.com";
+    const portString = getOptionalEnvPair("EMAIL_PORT", "SMTP_PORT") || "587";
     const port = Number.parseInt(portString, 10);
     if (!Number.isFinite(port) || port <= 0) {
-        throw new Error("EMAIL_PORT/SMTP_PORT must be a valid positive number.");
+        throw new Error(
+            "EMAIL_PORT/SMTP_PORT must be a valid positive number when provided."
+        );
     }
 
     const user = getRequiredEnvPair("EMAIL_USER", "SMTP_USER");
     const pass = getRequiredEnvPair("EMAIL_PASS", "SMTP_PASS");
-    const secure = isTruthy(getOptionalEnv("EMAIL_SECURE") ?? getOptionalEnv("SMTP_SECURE")) || port === 465;
+    const secure =
+        isTruthy(getOptionalEnv("EMAIL_SECURE") ?? getOptionalEnv("SMTP_SECURE")) ||
+        port === 465;
 
     cachedTransporter = nodemailer.createTransport({
         host,

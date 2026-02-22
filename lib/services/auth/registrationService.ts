@@ -60,11 +60,12 @@ export async function registerUser({
     } catch (error) {
         if (
             error instanceof Error &&
-            error.message.toLowerCase().includes("missing email config")
+            (error.message.toLowerCase().includes("missing email config") ||
+                error.message.toLowerCase().includes("email_port/smtp_port"))
         ) {
             throw new RegistrationError(
                 "EMAIL_SEND_FAILED",
-                "Email service is not configured. Please set EMAIL_HOST/EMAIL_PORT/EMAIL_USER/EMAIL_PASS."
+                "Email service is not configured. Please set EMAIL_USER/EMAIL_PASS (or SMTP_USER/SMTP_PASS). EMAIL_HOST/EMAIL_PORT are optional."
             );
         }
 
