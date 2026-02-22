@@ -376,7 +376,8 @@ export async function POST(req: NextRequest) {
                 targetEmail,
                 replyForSend,
                 existingEmail.category || "general",
-                user.id
+                user.id,
+                { allowWhenAutoEmailDisabled: true }
             );
 
             if (!sendResult.success) {

@@ -7,6 +7,10 @@ export interface SendAutoReplyResult {
     error?: string;
 }
 
+interface SendAutoReplyOptions {
+    allowWhenAutoEmailDisabled?: boolean;
+}
+
 function isValidEmail(value: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
@@ -84,7 +88,8 @@ export async function sendAutoReplyDetailed(
     email: string,
     reply: string,
     category: string,
-    userId?: string
+    userId?: string,
+    options?: SendAutoReplyOptions
 ): Promise<SendAutoReplyResult> {
     const recipient = (email || "").trim();
     const replyText = (reply || "").trim();
@@ -97,7 +102,8 @@ export async function sendAutoReplyDetailed(
         return { success: false, error: "Reply text is empty" };
     }
 
-    if (!isAutoEmailEnabled()) {
+    const allowWhenAutoEmailDisabled = options?.allowWhenAutoEmailDisabled === true;
+    if (!allowWhenAutoEmailDisabled && !isAutoEmailEnabled()) {
         return { success: false, error: "AUTO_EMAIL is disabled" };
     }
 
