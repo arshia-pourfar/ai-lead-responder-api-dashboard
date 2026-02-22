@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { detectCategory } from "@/lib/services/classifier";
 import { sendAutoReplyDetailed } from "@/lib/services/email";
 import { analyzeLead } from "@/lib/services/gemini";
+import { getUserAutomationSettings } from "@/lib/services/userSettings";
 import { markEmailAsSeenByUid } from "@/lib/services/readEmail";
 import type { Email as ImapEmail } from "@/lib/services/readEmail";
 
@@ -45,6 +46,15 @@ function pickFinalReply(manualReply: string | null, aiReply: string | null): str
     const manual = (manualReply || "").trim();
     if (manual) return manual;
     return (aiReply || "").trim();
+}
+
+async function isAutoSendEnabledForUser(userId: string): Promise<boolean> {
+    try {
+        const settings = await getUserAutomationSettings(userId);
+        return settings.autoSendReadyEmails === true;
+    } catch {
+        return false;
+    }
 }
 
 async function sendPreparedEmail(
@@ -167,6 +177,11 @@ export async function autoPrepareUnreadEmails(
 
                 if (options.autoSendReadyEmails) {
                     try {
+                        const autoSendEnabled = await isAutoSendEnabledForUser(userId);
+                        if (!autoSendEnabled) {
+                            continue;
+                        }
+
                         const sendResult = await sendPreparedEmail(userId, duplicate);
                         if (sendResult.sent) {
                             result.sentCount += 1;
@@ -226,6 +241,11 @@ export async function autoPrepareUnreadEmails(
             result.preparedCount += 1;
 
             if (options.autoSendReadyEmails) {
+                const autoSendEnabled = await isAutoSendEnabledForUser(userId);
+                if (!autoSendEnabled) {
+                    continue;
+                }
+
                 const sendResult = await sendPreparedEmail(userId, created);
                 if (sendResult.sent) {
                     result.sentCount += 1;
@@ -248,6 +268,15 @@ export async function autoSendPendingReadyEmails(
     userId: string,
     maxToSend = DEFAULT_MAX_AUTO_SEND
 ): Promise<AutoSendReadyResult> {
+    const initiallyEnabled = await isAutoSendEnabledForUser(userId);
+    if (!initiallyEnabled) {
+        return {
+            sentCount: 0,
+            skippedCount: 0,
+            errors: [],
+        };
+    }
+
     const safeLimit = Number.isFinite(maxToSend)
         ? Math.max(1, Math.floor(maxToSend))
         : DEFAULT_MAX_AUTO_SEND;
@@ -278,6 +307,11 @@ export async function autoSendPendingReadyEmails(
     };
 
     for (const email of pendingEmails) {
+        const stillEnabled = await isAutoSendEnabledForUser(userId);
+        if (!stillEnabled) {
+            break;
+        }
+
         try {
             const sendResult = await sendPreparedEmail(userId, email);
             if (sendResult.sent) {
