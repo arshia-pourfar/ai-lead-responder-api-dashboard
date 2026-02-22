@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
     const searchParams = useSearchParams();
     const [email, setEmail] = useState("");
     const [loading, setLoading] = useState(false);
@@ -84,5 +84,23 @@ export default function ForgotPasswordPage() {
                 </p>
             </form>
         </div>
+    );
+}
+
+function ForgotPasswordFallback() {
+    return (
+        <div className="flex min-h-screen h-dvh items-center justify-center p-4">
+            <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 sm:p-8 text-sm text-muted">
+                Loading...
+            </div>
+        </div>
+    );
+}
+
+export default function ForgotPasswordPage() {
+    return (
+        <Suspense fallback={<ForgotPasswordFallback />}>
+            <ForgotPasswordContent />
+        </Suspense>
     );
 }
