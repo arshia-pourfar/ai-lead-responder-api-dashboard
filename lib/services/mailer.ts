@@ -9,27 +9,51 @@ interface SendEmailPayload {
 
 let cachedTransporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
+const EMAIL_USER_KEYS = ["EMAIL_USER", "SMTP_USER", "SMTP_USERNAME"] as const;
+const EMAIL_PASS_KEYS = ["EMAIL_PASS", "SMTP_PASS", "SMTP_PASSWORD"] as const;
+const EMAIL_HOST_KEYS = ["EMAIL_HOST", "SMTP_HOST"] as const;
+const EMAIL_PORT_KEYS = ["EMAIL_PORT", "SMTP_PORT"] as const;
+const EMAIL_SECURE_KEYS = ["EMAIL_SECURE", "SMTP_SECURE"] as const;
+const EMAIL_FROM_KEYS = ["EMAIL_FROM", "SMTP_FROM"] as const;
+
+function normalizeEnvValue(value: string | undefined) {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    // Some hosting dashboards store copied values with surrounding quotes.
+    if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+        const unquoted = trimmed.slice(1, -1).trim();
+        return unquoted || null;
+    }
+
+    return trimmed;
+}
+
 function getOptionalEnv(name: string) {
-    const value = process.env[name]?.trim();
-    return value || null;
+    return normalizeEnvValue(process.env[name]);
 }
 
-function getRequiredEnvPair(primary: string, fallback: string) {
-    const primaryValue = getOptionalEnv(primary);
-    if (primaryValue) {
-        return primaryValue;
+function getFirstAvailableEnv(names: readonly string[]) {
+    for (const name of names) {
+        const value = getOptionalEnv(name);
+        if (value) {
+            return value;
+        }
     }
-
-    const fallbackValue = getOptionalEnv(fallback);
-    if (fallbackValue) {
-        return fallbackValue;
-    }
-
-    throw new Error(`Missing email config: set ${primary} (or ${fallback}).`);
+    return null;
 }
 
-function getOptionalEnvPair(primary: string, fallback: string) {
-    return getOptionalEnv(primary) || getOptionalEnv(fallback);
+function getRequiredEnv(names: readonly string[]) {
+    const value = getFirstAvailableEnv(names);
+    if (value) {
+        return value;
+    }
+
+    throw new Error(`Missing email config: set one of ${names.join(", ")}.`);
 }
 
 function isTruthy(value: string | null) {
@@ -43,8 +67,8 @@ function getTransporter() {
         return cachedTransporter;
     }
 
-    const host = getOptionalEnvPair("EMAIL_HOST", "SMTP_HOST") || "smtp.gmail.com";
-    const portString = getOptionalEnvPair("EMAIL_PORT", "SMTP_PORT") || "587";
+    const host = getFirstAvailableEnv(EMAIL_HOST_KEYS) || "smtp.gmail.com";
+    const portString = getFirstAvailableEnv(EMAIL_PORT_KEYS) || "587";
     const port = Number.parseInt(portString, 10);
     if (!Number.isFinite(port) || port <= 0) {
         throw new Error(
@@ -52,11 +76,9 @@ function getTransporter() {
         );
     }
 
-    const user = getRequiredEnvPair("EMAIL_USER", "SMTP_USER");
-    const pass = getRequiredEnvPair("EMAIL_PASS", "SMTP_PASS");
-    const secure =
-        isTruthy(getOptionalEnv("EMAIL_SECURE") ?? getOptionalEnv("SMTP_SECURE")) ||
-        port === 465;
+    const user = getRequiredEnv(EMAIL_USER_KEYS);
+    const pass = getRequiredEnv(EMAIL_PASS_KEYS);
+    const secure = isTruthy(getFirstAvailableEnv(EMAIL_SECURE_KEYS)) || port === 465;
 
     cachedTransporter = nodemailer.createTransport({
         host,
@@ -74,11 +96,9 @@ function getTransporter() {
 export async function sendEmail(payload: SendEmailPayload) {
     const transporter = getTransporter();
     const from =
-        getOptionalEnv("EMAIL_FROM") ||
-        getOptionalEnv("SMTP_FROM") ||
-        getOptionalEnv("EMAIL_USER") ||
-        getOptionalEnv("SMTP_USER") ||
-        getRequiredEnvPair("EMAIL_USER", "SMTP_USER");
+        getFirstAvailableEnv(EMAIL_FROM_KEYS) ||
+        getFirstAvailableEnv(EMAIL_USER_KEYS) ||
+        getRequiredEnv(EMAIL_USER_KEYS);
 
     await transporter.sendMail({
         from,

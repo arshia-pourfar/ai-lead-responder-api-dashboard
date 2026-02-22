@@ -7,6 +7,8 @@ const HASH_ROUNDS = 12;
 const DEV_FALLBACK_ENCRYPTION_KEY = "local-dev-email-credentials-key";
 const EMAIL_CREDENTIAL_DIAGNOSTICS =
     (process.env.EMAIL_CREDENTIAL_DIAGNOSTICS || "").toLowerCase() === "true";
+const ENV_EMAIL_KEYS = ["EMAIL_USER", "SMTP_USER", "SMTP_USERNAME"] as const;
+const ENV_PASSWORD_KEYS = ["EMAIL_PASS", "SMTP_PASS", "SMTP_PASSWORD"] as const;
 let hasLoggedFallbackKeyWarning = false;
 
 function diagnosticsLog(message: string, payload?: Record<string, unknown>): void {
@@ -66,6 +68,31 @@ function normalizeAppPassword(value: string): string {
 
 function validateAppPassword(value: string): boolean {
     return value.length === GMAIL_APP_PASSWORD_LENGTH;
+}
+
+function normalizeRawEnv(value: string | undefined): string {
+    if (!value) return "";
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+
+    if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+        return trimmed.slice(1, -1).trim();
+    }
+
+    return trimmed;
+}
+
+function getEnvByPriority(keys: readonly string[]): string {
+    for (const key of keys) {
+        const value = normalizeRawEnv(process.env[key]);
+        if (value) {
+            return value;
+        }
+    }
+    return "";
 }
 
 function getEncryptionKey(): Buffer {
@@ -253,8 +280,8 @@ async function resolveStoredUserCredentials(
 }
 
 function resolveEnvCredentials(): ResolvedEmailCredentials | null {
-    const envEmail = normalizeEmailAddress(process.env.EMAIL_USER || "");
-    const envPassword = normalizeAppPassword(process.env.EMAIL_PASS || "");
+    const envEmail = normalizeEmailAddress(getEnvByPriority(ENV_EMAIL_KEYS));
+    const envPassword = normalizeAppPassword(getEnvByPriority(ENV_PASSWORD_KEYS));
 
     diagnosticsLog("resolveEnvCredentials", {
         hasEnvEmail: Boolean(envEmail),

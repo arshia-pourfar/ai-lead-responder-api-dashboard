@@ -6,6 +6,8 @@ import {
     verifyEmailSchema,
 } from "@/lib/validation/authSchemas";
 
+export const runtime = "nodejs";
+
 function getClientIp(req: NextRequest) {
     const forwardedFor = req.headers.get("x-forwarded-for");
     if (forwardedFor) {

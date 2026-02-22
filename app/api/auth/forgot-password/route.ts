@@ -5,6 +5,8 @@ import {
 } from "@/lib/validation/authSchemas";
 import { requestPasswordReset } from "@/lib/services/auth/passwordResetService";
 
+export const runtime = "nodejs";
+
 const GENERIC_RESPONSE_MESSAGE =
     "If an account exists with this email, a reset link has been sent.";
 

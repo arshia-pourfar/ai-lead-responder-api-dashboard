@@ -8,6 +8,8 @@ import {
     resendVerificationSchema,
 } from "@/lib/validation/authSchemas";
 
+export const runtime = "nodejs";
+
 const GENERIC_RESPONSE = {
     // Keep response generic so callers cannot enumerate registered emails.
     message: "If an account exists, a new verification code has been sent.",

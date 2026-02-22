@@ -29,21 +29,38 @@ function normalizeOrigin(value: string | undefined): string {
     }
 }
 
+function isLocalHostname(hostname: string): boolean {
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isLocalOrigin(origin: string): boolean {
+    try {
+        return isLocalHostname(new URL(origin).hostname);
+    } catch {
+        return false;
+    }
+}
+
 function resolveAppOrigin(requestOrigin?: string): string {
     const candidates = [
+        requestOrigin,
         process.env.APP_URL,
         process.env.NEXT_PUBLIC_APP_URL,
         process.env.VERCEL_PROJECT_PRODUCTION_URL,
         process.env.VERCEL_URL,
-        requestOrigin,
     ];
+    const isProduction = process.env.NODE_ENV === "production";
 
     for (const candidate of candidates) {
         const normalized = normalizeOrigin(candidate);
-        if (normalized) return normalized;
+        if (!normalized) continue;
+        if (isProduction && isLocalOrigin(normalized)) continue;
+        return normalized;
     }
 
-    return "http://localhost:3000";
+    throw new Error(
+        "Missing app origin config: set APP_URL/NEXT_PUBLIC_APP_URL (or VERCEL_* vars)."
+    );
 }
 
 function buildResetPasswordEmail(resetUrl: string) {

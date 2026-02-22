@@ -8,6 +8,8 @@ import {
 } from "@/lib/validation/authSchemas";
 import { normalizeEmail } from "@/lib/services/auth/emailVerificationService";
 
+export const runtime = "nodejs";
+
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
 export async function POST(req: NextRequest) {

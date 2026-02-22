@@ -65,7 +65,7 @@ export async function registerUser({
         ) {
             throw new RegistrationError(
                 "EMAIL_SEND_FAILED",
-                "Email service is not configured. Please set EMAIL_USER/EMAIL_PASS (or SMTP_USER/SMTP_PASS). EMAIL_HOST/EMAIL_PORT are optional."
+                "Email service is not configured. Set EMAIL_USER/EMAIL_PASS (or SMTP_USER/SMTP_PASS, SMTP_USERNAME/SMTP_PASSWORD). EMAIL_HOST/EMAIL_PORT are optional."
             );
         }
 

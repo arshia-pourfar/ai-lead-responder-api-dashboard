@@ -5,6 +5,8 @@ import {
 } from "@/lib/validation/authSchemas";
 import { resetPasswordWithToken } from "@/lib/services/auth/passwordResetService";
 
+export const runtime = "nodejs";
+
 function isInvalidOrExpiredTokenError(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
     const message = error.message.toLowerCase();
