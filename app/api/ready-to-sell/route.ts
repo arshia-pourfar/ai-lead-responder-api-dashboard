@@ -185,6 +185,18 @@ function mapEmailResponse(email: {
     };
 }
 
+function isDatabaseConnectivityError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+
+    const message = error.message.toLowerCase();
+    return (
+        message.includes("can't reach database server") ||
+        message.includes("prismaclientinitializationerror") ||
+        message.includes("p1001") ||
+        message.includes("timed out")
+    );
+}
+
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
     if (!user || typeof user !== "object" || !("id" in user)) {
@@ -258,6 +270,9 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(sortedEmails.map(mapEmailResponse));
     } catch (error) {
         console.error("READY TO SELL ERROR:", error);
+        if (isDatabaseConnectivityError(error)) {
+            return NextResponse.json([], { status: 200 });
+        }
         return NextResponse.json([], { status: 500 });
     }
 }

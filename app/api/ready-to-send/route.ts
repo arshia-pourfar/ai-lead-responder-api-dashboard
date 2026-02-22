@@ -4,6 +4,8 @@ import { authGuard } from "@/lib/middleware/authMiddleware";
 import { sendAutoReplyDetailed } from "@/lib/services/email";
 import { detectCategory } from "@/lib/services/classifier";
 import { Prisma } from "@prisma/client";
+import { getUserAutomationSettings } from "@/lib/services/userSettings";
+import { autoSendPendingReadyEmails } from "@/lib/services/automation";
 
 export const dynamic = "force-dynamic";
 
@@ -203,6 +205,18 @@ function pickFinalReply(manualReply?: string, aiReply?: string): string {
     return (aiReply || "").trim();
 }
 
+function isDatabaseConnectivityError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+
+    const message = error.message.toLowerCase();
+    return (
+        message.includes("can't reach database server") ||
+        message.includes("prismaclientinitializationerror") ||
+        message.includes("p1001") ||
+        message.includes("timed out")
+    );
+}
+
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
     if (!user || typeof user !== "object" || !("id" in user)) {
@@ -216,6 +230,19 @@ export async function GET(req: NextRequest) {
         const sortFilter = normalizeSortFilter(req.nextUrl.searchParams.get("sort"));
         const confidenceSort = sortFilter === "confidence_asc" || sortFilter === "confidence_desc";
         const pagination = getPaginationParams(req);
+        const shouldConsiderAutoSend =
+            pagination.offset === 0 &&
+            (categoryFilter === "ready" || categoryFilter === "all");
+
+        if (shouldConsiderAutoSend) {
+            const automationSettings = await getUserAutomationSettings(String(user.id));
+            if (automationSettings.autoSendReadyEmails) {
+                const autoSendResult = await autoSendPendingReadyEmails(String(user.id));
+                if (autoSendResult.errors.length > 0) {
+                    console.warn("Ready auto-send warnings:", autoSendResult.errors);
+                }
+            }
+        }
 
         const where: Prisma.EmailWhereInput = {
             userId: user.id,
@@ -274,6 +301,9 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(sortedEmails.map(mapEmailResponse));
     } catch (error) {
         console.error("READY TO SEND GET ERROR:", error);
+        if (isDatabaseConnectivityError(error)) {
+            return NextResponse.json([], { status: 200 });
+        }
         return NextResponse.json([], { status: 500 });
     }
 }

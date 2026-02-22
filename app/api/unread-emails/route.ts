@@ -3,6 +3,8 @@ import { readUnreadEmailsPaginated, Email, markEmailAsSeenByUid } from "@/lib/se
 import prisma from "@/lib/prisma";
 import { authGuard } from "@/lib/middleware/authMiddleware";
 import { detectCategory } from "@/lib/services/classifier";
+import { getUserAutomationSettings } from "@/lib/services/userSettings";
+import { autoPrepareUnreadEmails } from "@/lib/services/automation";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +48,11 @@ interface ReadyEmailResponse {
 
 const CACHE_TTL_MS = 5_000;
 const UNREAD_FETCH_TIMEOUT_MS = 12_000;
+const UNREAD_AUTOMATION_COOLDOWN_MS = 30_000;
+const UNREAD_AUTOMATION_BATCH_LIMIT = 20;
 const unreadCache = new Map<string, { expiresAt: number; payload: UnreadEmailsGetResponse }>();
+const unreadAutomationInFlight = new Set<string>();
+const unreadAutomationLastRun = new Map<string, number>();
 
 type CategoryFilter = "all" | "unread" | "ready" | "important" | "sent";
 type ConfidenceFilter = "all" | "high" | "medium" | "low";
@@ -125,6 +131,54 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     });
 }
 
+function canRunUnreadAutomation(userId: string): boolean {
+    if (unreadAutomationInFlight.has(userId)) {
+        return false;
+    }
+
+    const now = Date.now();
+    const lastRun = unreadAutomationLastRun.get(userId) ?? 0;
+    return now - lastRun >= UNREAD_AUTOMATION_COOLDOWN_MS;
+}
+
+function runUnreadAutomationInBackground(
+    userId: string,
+    unreadEmails: Email[],
+    autoSendReadyEmails: boolean
+): void {
+    if (!canRunUnreadAutomation(userId)) {
+        return;
+    }
+
+    const batch = unreadEmails.slice(0, UNREAD_AUTOMATION_BATCH_LIMIT);
+    if (batch.length === 0) {
+        return;
+    }
+
+    unreadAutomationInFlight.add(userId);
+
+    void autoPrepareUnreadEmails(userId, batch, { autoSendReadyEmails })
+        .then((automationResult) => {
+            if (
+                automationResult.preparedCount > 0 ||
+                automationResult.sentCount > 0
+            ) {
+                unreadCache.clear();
+            }
+
+            if (automationResult.errors.length > 0) {
+                console.warn("Unread auto-processing warnings:", automationResult.errors);
+            }
+        })
+        .catch((error) => {
+            console.error("Unread auto-processing failed:", error);
+        })
+        .finally(() => {
+            unreadAutomationInFlight.delete(userId);
+            unreadAutomationLastRun.set(userId, Date.now());
+        });
+}
+
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
     if (!user || typeof user !== "object" || !("id" in user)) {
@@ -152,23 +206,38 @@ export async function GET(req: NextRequest) {
             confidenceFilter !== "all" ||
             dateFilter !== "all" ||
             sortFilter !== "newest";
-        const skipCache = effectiveOffset === 0;
+        const automationSettings =
+            effectiveOffset === 0
+                ? await getUserAutomationSettings(String(user.id))
+                : { autoApproveUnread: false, autoSendReadyEmails: false };
+        const shouldAutoProcessUnread =
+            effectiveOffset === 0 && automationSettings.autoApproveUnread;
 
         const cacheKey = `${user.id}:${limit}:${effectiveOffset}:${categoryFilter}:${confidenceFilter}:${dateFilter}:${sortFilter}`;
         const now = Date.now();
         const cached = unreadCache.get(cacheKey);
-        if (!skipCache && cached && cached.expiresAt > now) {
+        if (cached && cached.expiresAt > now) {
             return NextResponse.json<UnreadEmailsGetResponse>(cached.payload, { status: 200 });
         }
 
+        const shouldFetchAllUnread = requiresGlobalFiltering;
+
         const unread = await withTimeout(
             readUnreadEmailsPaginated(
-                requiresGlobalFiltering ? Number.MAX_SAFE_INTEGER : limit,
-                requiresGlobalFiltering ? 0 : effectiveOffset,
+                shouldFetchAllUnread ? Number.MAX_SAFE_INTEGER : limit,
+                shouldFetchAllUnread ? 0 : effectiveOffset,
                 user.id
             ),
             UNREAD_FETCH_TIMEOUT_MS
         );
+
+        if (shouldAutoProcessUnread && unread.emails.length > 0) {
+            runUnreadAutomationInBackground(
+                String(user.id),
+                unread.emails,
+                automationSettings.autoSendReadyEmails
+            );
+        }
 
         let filteredEmails = [...unread.emails];
 
@@ -242,9 +311,7 @@ export async function GET(req: NextRequest) {
         }));
 
         const payload: UnreadEmailsGetResponse = { emails: formatted, total: totalFiltered };
-        if (!skipCache) {
-            unreadCache.set(cacheKey, { expiresAt: now + CACHE_TTL_MS, payload });
-        }
+        unreadCache.set(cacheKey, { expiresAt: now + CACHE_TTL_MS, payload });
 
         return NextResponse.json<UnreadEmailsGetResponse>(payload, { status: 200 });
     } catch (err) {
@@ -256,12 +323,10 @@ export async function GET(req: NextRequest) {
         const confidenceFilter = normalizeConfidenceFilter(req.nextUrl.searchParams.get("confidence"));
         const dateFilter = normalizeDateFilter(req.nextUrl.searchParams.get("date"));
         const sortFilter = normalizeSortFilter(req.nextUrl.searchParams.get("sort"));
-        const effectiveOffset = Number.parseInt(offsetParam, 10) || 0;
-        const skipCache = effectiveOffset === 0;
         const fallbackCacheKey = `${user.id}:${limitParam}:${offsetParam}:${categoryFilter}:${confidenceFilter}:${dateFilter}:${sortFilter}`;
         const stale = unreadCache.get(fallbackCacheKey);
 
-        if (!skipCache && stale) {
+        if (stale) {
             return NextResponse.json<UnreadEmailsGetResponse>(stale.payload, {
                 status: 200,
                 headers: { "x-cache": "stale" },

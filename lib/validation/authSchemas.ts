@@ -34,6 +34,15 @@ export const resendVerificationSchema = z.object({
     email: emailSchema,
 });
 
+export const forgotPasswordSchema = z.object({
+    email: emailSchema,
+});
+
+export const resetPasswordSchema = z.object({
+    token: z.string().trim().min(1, "Reset token is required."),
+    password: passwordSchema,
+});
+
 export function getFirstValidationError(error: z.ZodError): string {
     return error.issues[0]?.message ?? "Invalid request body.";
 }
@@ -42,3 +51,5 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

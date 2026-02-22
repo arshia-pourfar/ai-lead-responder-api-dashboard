@@ -38,6 +38,9 @@ export default function LoginPage() {
 
                 <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="border border-border rounded-md px-3 py-2 outline-none text-sm" />
                 <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="border border-border rounded-md px-3 py-2 outline-none text-sm" />
+                <p className="text-xs text-muted">
+                    <a href="/forgot-password" className="text-primary hover:underline">Forgot password?</a>
+                </p>
 
                 <button className="bg-primary text-white py-2 rounded-md hover:bg-primary/80 text-sm">Login</button>
                 <p className="text-xs text-muted">

@@ -4,7 +4,9 @@ import {
     AiProvider,
     DEFAULT_EMAIL_CATEGORIES,
     getDefaultAiProviderFromEnv,
+    getUserAutomationSettings,
     getUserAiSettings,
+    saveUserAutomationSettings,
     saveUserAiSettings,
 } from "@/lib/services/userSettings";
 import {
@@ -19,6 +21,10 @@ interface SettingsResponse {
     customPrompt: string;
     customCategories: string[];
     defaultCategories: string[];
+    automationSettings: {
+        autoApproveUnread: boolean;
+        autoSendReadyEmails: boolean;
+    };
     aiSettings: {
         useDefaultProvider: boolean;
         provider: AiProvider;
@@ -59,6 +65,13 @@ function getDefaultAiSettings(): SettingsResponse["aiSettings"] {
     };
 }
 
+function getDefaultAutomationSettings(): SettingsResponse["automationSettings"] {
+    return {
+        autoApproveUnread: false,
+        autoSendReadyEmails: false,
+    };
+}
+
 function parseBoolean(value: unknown, fallback: boolean): boolean {
     if (typeof value === "boolean") return value;
     return fallback;
@@ -72,6 +85,7 @@ export async function GET(req: NextRequest) {
                 customPrompt: "",
                 customCategories: [],
                 defaultCategories: [...DEFAULT_EMAIL_CATEGORIES],
+                automationSettings: getDefaultAutomationSettings(),
                 aiSettings: getDefaultAiSettings(),
                 emailSettings: getDefaultEmailSettings(),
             },
@@ -80,9 +94,10 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const [aiSettings, emailSettings] = await Promise.all([
+        const [aiSettings, emailSettings, automationSettings] = await Promise.all([
             getUserAiSettings(user.id),
             getUserEmailSettings(user.id),
+            getUserAutomationSettings(user.id),
         ]);
 
         return NextResponse.json<SettingsResponse>(
@@ -90,6 +105,7 @@ export async function GET(req: NextRequest) {
                 customPrompt: aiSettings.customPrompt,
                 customCategories: aiSettings.customCategories,
                 defaultCategories: [...DEFAULT_EMAIL_CATEGORIES],
+                automationSettings,
                 aiSettings: aiSettings.aiProviderSettings,
                 emailSettings,
             },
@@ -102,6 +118,7 @@ export async function GET(req: NextRequest) {
                 customPrompt: "",
                 customCategories: [],
                 defaultCategories: [...DEFAULT_EMAIL_CATEGORIES],
+                automationSettings: getDefaultAutomationSettings(),
                 aiSettings: getDefaultAiSettings(),
                 emailSettings: getDefaultEmailSettings(),
             },
@@ -129,15 +146,20 @@ export async function POST(req: NextRequest) {
         body.aiSettings && typeof body.aiSettings === "object"
             ? (body.aiSettings as Record<string, unknown>)
             : null;
+    const automationSettingsInput =
+        body.automationSettings && typeof body.automationSettings === "object"
+            ? (body.automationSettings as Record<string, unknown>)
+            : null;
 
     const emailSettingsInput =
         body.emailSettings && typeof body.emailSettings === "object"
             ? (body.emailSettings as Record<string, unknown>)
             : null;
     const shouldUpdateEmailSettings = Boolean(emailSettingsInput);
+    const shouldUpdateAutomationSettings = Boolean(automationSettingsInput);
 
     try {
-        const [aiSettings, emailSettings] = await Promise.all([
+        const [aiSettings, emailSettings, automationSettings] = await Promise.all([
             saveUserAiSettings(user.id, {
                 customPrompt,
                 customCategories,
@@ -175,6 +197,18 @@ export async function POST(req: NextRequest) {
                             : "",
                 })
                 : getUserEmailSettings(user.id),
+            shouldUpdateAutomationSettings
+                ? saveUserAutomationSettings(user.id, {
+                    autoApproveUnread: parseBoolean(
+                        automationSettingsInput?.autoApproveUnread,
+                        false
+                    ),
+                    autoSendReadyEmails: parseBoolean(
+                        automationSettingsInput?.autoSendReadyEmails,
+                        false
+                    ),
+                })
+                : getUserAutomationSettings(user.id),
         ]);
 
         return NextResponse.json<SettingsResponse>(
@@ -182,6 +216,7 @@ export async function POST(req: NextRequest) {
                 customPrompt: aiSettings.customPrompt,
                 customCategories: aiSettings.customCategories,
                 defaultCategories: [...DEFAULT_EMAIL_CATEGORIES],
+                automationSettings,
                 aiSettings: aiSettings.aiProviderSettings,
                 emailSettings,
             },

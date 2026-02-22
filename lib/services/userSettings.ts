@@ -11,18 +11,24 @@ export type AiProvider = (typeof AI_PROVIDERS)[number];
 const CUSTOM_PROMPT_TITLE = "custom_ai_prompt";
 const CUSTOM_AI_PROVIDER_TITLE = "custom_ai_provider";
 const CUSTOM_AI_API_KEY_ENCRYPTED_TITLE = "custom_ai_api_key_encrypted";
+const AUTO_APPROVE_UNREAD_TITLE = "automation_auto_approve_unread";
+const AUTO_SEND_READY_EMAILS_TITLE = "automation_auto_send_ready_emails";
 const SETTINGS_PROMPT_TITLES = [
     CUSTOM_PROMPT_TITLE,
     CUSTOM_AI_PROVIDER_TITLE,
     CUSTOM_AI_API_KEY_ENCRYPTED_TITLE,
+    AUTO_APPROVE_UNREAD_TITLE,
+    AUTO_SEND_READY_EMAILS_TITLE,
 ] as const;
 
 const MAX_PROMPT_LENGTH = 4_000;
 const MAX_CUSTOM_CATEGORIES = 25;
 const MAX_CATEGORY_LENGTH = 40;
 const DEV_FALLBACK_AI_ENCRYPTION_KEY = "local-dev-ai-credentials-key";
+const AUTOMATION_SETTINGS_DB_COOLDOWN_MS = 60_000;
 
 let hasLoggedAiFallbackKeyWarning = false;
+let automationSettingsDbUnavailableUntil = 0;
 
 interface PromptRow {
     id: string;
@@ -61,10 +67,25 @@ export interface UserAiSettings {
     aiProviderSettings: UserAiProviderSettings;
 }
 
+export interface UserAutomationSettings {
+    autoApproveUnread: boolean;
+    autoSendReadyEmails: boolean;
+}
+
+export const DEFAULT_USER_AUTOMATION_SETTINGS: UserAutomationSettings = {
+    autoApproveUnread: false,
+    autoSendReadyEmails: false,
+};
+
 export interface SaveUserAiSettingsInput {
     customPrompt: string;
     customCategories: string[];
     aiProviderSettings?: SaveAiProviderSettingsInput;
+}
+
+export interface SaveUserAutomationSettingsInput {
+    autoApproveUnread?: boolean;
+    autoSendReadyEmails?: boolean;
 }
 
 export interface ResolvedAiRuntimeSettings {
@@ -83,6 +104,23 @@ function normalizeCategoryName(value: string): string {
 
 function normalizeApiKey(value: string): string {
     return value.trim();
+}
+
+function parseBooleanPromptValue(value: string | null | undefined): boolean {
+    const normalized = (value || "").trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function isDatabaseConnectivityError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+
+    const message = error.message.toLowerCase();
+    return (
+        message.includes("can't reach database server") ||
+        message.includes("prismaclientinitializationerror") ||
+        message.includes("p1001") ||
+        message.includes("timed out")
+    );
 }
 
 function toUniqueList(values: string[]): string[] {
@@ -322,6 +360,47 @@ export async function getUserAiSettings(userId: string): Promise<UserAiSettings>
     };
 }
 
+export async function getUserAutomationSettings(
+    userId: string
+): Promise<UserAutomationSettings> {
+    if (Date.now() < automationSettingsDbUnavailableUntil) {
+        return { ...DEFAULT_USER_AUTOMATION_SETTINGS };
+    }
+
+    try {
+        const promptRows = await prisma.prompt.findMany({
+            where: {
+                userId,
+                title: { in: [AUTO_APPROVE_UNREAD_TITLE, AUTO_SEND_READY_EMAILS_TITLE] },
+            },
+            select: {
+                id: true,
+                title: true,
+                content: true,
+            },
+        });
+
+        const autoApproveRow = findPromptByTitle(promptRows, AUTO_APPROVE_UNREAD_TITLE);
+        const autoSendRow = findPromptByTitle(promptRows, AUTO_SEND_READY_EMAILS_TITLE);
+
+        return {
+            autoApproveUnread: parseBooleanPromptValue(autoApproveRow?.content),
+            autoSendReadyEmails: parseBooleanPromptValue(autoSendRow?.content),
+        };
+    } catch (error) {
+        if (isDatabaseConnectivityError(error)) {
+            automationSettingsDbUnavailableUntil =
+                Date.now() + AUTOMATION_SETTINGS_DB_COOLDOWN_MS;
+            console.warn(
+                "DB unavailable while loading automation settings; using defaults temporarily."
+            );
+            return { ...DEFAULT_USER_AUTOMATION_SETTINGS };
+        }
+
+        throw error;
+    }
+}
+
 async function resolveStoredUserAiRuntimeSettings(
     userId: string
 ): Promise<ResolvedAiRuntimeSettings | null> {
@@ -420,4 +499,29 @@ export async function saveUserAiSettings(
     });
 
     return getUserAiSettings(userId);
+}
+
+export async function saveUserAutomationSettings(
+    userId: string,
+    input: SaveUserAutomationSettingsInput
+): Promise<UserAutomationSettings> {
+    const autoApproveUnread = input.autoApproveUnread === true;
+    const autoSendReadyEmails = input.autoSendReadyEmails === true;
+
+    await prisma.$transaction(async (tx) => {
+        await writePromptValue(
+            tx,
+            userId,
+            AUTO_APPROVE_UNREAD_TITLE,
+            autoApproveUnread ? "1" : ""
+        );
+        await writePromptValue(
+            tx,
+            userId,
+            AUTO_SEND_READY_EMAILS_TITLE,
+            autoSendReadyEmails ? "1" : ""
+        );
+    });
+
+    return getUserAutomationSettings(userId);
 }

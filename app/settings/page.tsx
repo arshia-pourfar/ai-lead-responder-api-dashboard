@@ -10,6 +10,10 @@ interface SettingsPayload {
     customPrompt: string;
     customCategories: string[];
     defaultCategories: string[];
+    automationSettings: {
+        autoApproveUnread: boolean;
+        autoSendReadyEmails: boolean;
+    };
     aiSettings: {
         useDefaultProvider: boolean;
         provider: AiProvider;
@@ -37,12 +41,16 @@ export default function SettingsPage() {
     const [aiProvider, setAiProvider] = useState<AiProvider>("gemini");
     const [aiApiKey, setAiApiKey] = useState("");
     const [hasSavedAiApiKey, setHasSavedAiApiKey] = useState(false);
+    const [autoApproveUnread, setAutoApproveUnread] = useState(false);
+    const [autoSendReadyEmails, setAutoSendReadyEmails] = useState(false);
 
     const [registrationEmail, setRegistrationEmail] = useState("");
     const [useRegistrationEmail, setUseRegistrationEmail] = useState(true);
     const [emailAddress, setEmailAddress] = useState("");
     const [emailAppPassword, setEmailAppPassword] = useState("");
     const [hasSavedAppPassword, setHasSavedAppPassword] = useState(false);
+    const [sendingResetLink, setSendingResetLink] = useState(false);
+    const [resetLinkStatus, setResetLinkStatus] = useState<string | null>(null);
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -84,6 +92,10 @@ export default function SettingsPage() {
                     customPrompt: "",
                     customCategories: [],
                     defaultCategories: ["unread", "ready", "important", "sent"],
+                    automationSettings: {
+                        autoApproveUnread: false,
+                        autoSendReadyEmails: false,
+                    },
                     aiSettings: {
                         useDefaultProvider: true,
                         provider: "gemini",
@@ -114,6 +126,12 @@ export default function SettingsPage() {
                 setAiProvider(normalizeProvider(data.aiSettings?.provider));
                 setHasSavedAiApiKey(Boolean(data.aiSettings?.hasApiKey));
                 setAiApiKey("");
+                setAutoApproveUnread(
+                    Boolean(data.automationSettings?.autoApproveUnread)
+                );
+                setAutoSendReadyEmails(
+                    Boolean(data.automationSettings?.autoSendReadyEmails)
+                );
 
                 setRegistrationEmail(data.emailSettings?.registrationEmail || "");
                 setUseRegistrationEmail(
@@ -144,6 +162,7 @@ export default function SettingsPage() {
         try {
             setSaving(true);
             setStatus(null);
+            setResetLinkStatus(null);
 
             const res = await fetch("/api/settings", {
                 method: "POST",
@@ -156,6 +175,10 @@ export default function SettingsPage() {
                         useDefaultProvider: useDefaultAiProvider,
                         provider: aiProvider,
                         apiKey: aiApiKey,
+                    },
+                    automationSettings: {
+                        autoApproveUnread,
+                        autoSendReadyEmails,
                     },
                     emailSettings: {
                         useRegistrationEmail,
@@ -191,6 +214,12 @@ export default function SettingsPage() {
             setAiProvider(normalizeProvider(payload.aiSettings?.provider));
             setHasSavedAiApiKey(Boolean(payload.aiSettings?.hasApiKey));
             setAiApiKey("");
+            setAutoApproveUnread(
+                Boolean(payload.automationSettings?.autoApproveUnread)
+            );
+            setAutoSendReadyEmails(
+                Boolean(payload.automationSettings?.autoSendReadyEmails)
+            );
 
             setRegistrationEmail(payload.emailSettings?.registrationEmail || "");
             setUseRegistrationEmail(
@@ -213,6 +242,48 @@ export default function SettingsPage() {
             setStatus(message);
         } finally {
             setSaving(false);
+        }
+    };
+
+    const sendResetPasswordLink = async () => {
+        const targetEmail = (
+            registrationEmail ||
+            emailAddress ||
+            ""
+        ).trim();
+
+        if (!targetEmail) {
+            setResetLinkStatus("No account email found to send reset link.");
+            return;
+        }
+
+        try {
+            setSendingResetLink(true);
+            setResetLinkStatus(null);
+
+            const res = await fetch("/api/auth/forgot-password", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: targetEmail }),
+            });
+            const data = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(data?.error || "Could not send reset link.");
+            }
+
+            setResetLinkStatus(
+                data?.message ||
+                "If an account exists with this email, a reset link has been sent."
+            );
+        } catch (error) {
+            if (error instanceof Error) {
+                setResetLinkStatus(error.message);
+            } else {
+                setResetLinkStatus("Could not send reset link.");
+            }
+        } finally {
+            setSendingResetLink(false);
         }
     };
 
@@ -261,6 +332,61 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted">
                         Password is hashed and encrypted at rest. Leave blank to keep current password.
                     </p>
+                </div>
+
+                <div className="flex flex-col gap-2 text-sm">
+                    <label className="font-medium">Automation Settings</label>
+                    <label className="flex items-start gap-2 text-xs text-muted">
+                        <input
+                            type="checkbox"
+                            checked={autoApproveUnread}
+                            onChange={(event) =>
+                                setAutoApproveUnread(event.target.checked)
+                            }
+                        />
+                        Auto-read unread emails and move them to ready-to-send without manual approval
+                    </label>
+
+                    <label className="flex items-start gap-2 text-xs text-muted">
+                        <input
+                            type="checkbox"
+                            checked={autoSendReadyEmails}
+                            onChange={(event) =>
+                                setAutoSendReadyEmails(event.target.checked)
+                            }
+                        />
+                        Auto-send ready-to-send emails without human intervention
+                    </label>
+
+                    <p className="text-xs text-muted">
+                        When both options are active, new unread emails can be processed and sent automatically.
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-2 text-sm">
+                    <label className="font-medium">Security</label>
+                    <p className="text-xs text-muted">
+                        Need a password reset link for your account email?
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <button
+                            type="button"
+                            onClick={sendResetPasswordLink}
+                            disabled={sendingResetLink || loading}
+                            className="rounded-md border border-primary px-3 py-2 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+                        >
+                            {sendingResetLink ? "Sending..." : "Send Password Reset Link"}
+                        </button>
+                        <a
+                            href="/forgot-password"
+                            className="rounded-md border border-border px-3 py-2 text-xs hover:border-primary"
+                        >
+                            Open Forgot Password Page
+                        </a>
+                    </div>
+                    {resetLinkStatus && (
+                        <p className="text-xs text-muted">{resetLinkStatus}</p>
+                    )}
                 </div>
 
                 <div className="flex flex-col gap-2 text-sm">
