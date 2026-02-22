@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 import { authGuard } from "@/lib/middleware/authMiddleware";
 import { detectCategory } from "@/lib/services/classifier";
 import { getUserAutomationSettings } from "@/lib/services/userSettings";
-import { autoPrepareUnreadEmails } from "@/lib/services/automation";
+import { autoPrepareUnreadEmails, autoSendPendingReadyEmails } from "@/lib/services/automation";
 
 export const dynamic = "force-dynamic";
 
@@ -50,9 +50,12 @@ const CACHE_TTL_MS = 5_000;
 const UNREAD_FETCH_TIMEOUT_MS = 12_000;
 const UNREAD_AUTOMATION_COOLDOWN_MS = 30_000;
 const UNREAD_AUTOMATION_BATCH_LIMIT = 20;
+const READY_AUTOSEND_COOLDOWN_MS = 30_000;
 const unreadCache = new Map<string, { expiresAt: number; payload: UnreadEmailsGetResponse }>();
 const unreadAutomationInFlight = new Set<string>();
 const unreadAutomationLastRun = new Map<string, number>();
+const readyAutoSendInFlight = new Set<string>();
+const readyAutoSendLastRun = new Map<string, number>();
 
 type CategoryFilter = "all" | "unread" | "ready" | "important" | "sent";
 type ConfidenceFilter = "all" | "high" | "medium" | "low";
@@ -179,6 +182,41 @@ function runUnreadAutomationInBackground(
         });
 }
 
+function canRunReadyAutoSend(userId: string): boolean {
+    if (readyAutoSendInFlight.has(userId)) {
+        return false;
+    }
+
+    const now = Date.now();
+    const lastRun = readyAutoSendLastRun.get(userId) ?? 0;
+    return now - lastRun >= READY_AUTOSEND_COOLDOWN_MS;
+}
+
+function runReadyAutoSendInBackground(userId: string): void {
+    if (!canRunReadyAutoSend(userId)) {
+        return;
+    }
+
+    readyAutoSendInFlight.add(userId);
+
+    void autoSendPendingReadyEmails(userId)
+        .then((result) => {
+            if (result.sentCount > 0) {
+                unreadCache.clear();
+            }
+            if (result.errors.length > 0) {
+                console.warn("Ready auto-send warnings:", result.errors);
+            }
+        })
+        .catch((error) => {
+            console.error("Ready auto-send failed:", error);
+        })
+        .finally(() => {
+            readyAutoSendInFlight.delete(userId);
+            readyAutoSendLastRun.set(userId, Date.now());
+        });
+}
+
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
     if (!user || typeof user !== "object" || !("id" in user)) {
@@ -212,6 +250,12 @@ export async function GET(req: NextRequest) {
                 : { autoApproveUnread: false, autoSendReadyEmails: false };
         const shouldAutoProcessUnread =
             effectiveOffset === 0 && automationSettings.autoApproveUnread;
+        const shouldAutoSendReady =
+            effectiveOffset === 0 && automationSettings.autoSendReadyEmails;
+
+        if (shouldAutoSendReady) {
+            runReadyAutoSendInBackground(String(user.id));
+        }
 
         const cacheKey = `${user.id}:${limit}:${effectiveOffset}:${categoryFilter}:${confidenceFilter}:${dateFilter}:${sortFilter}`;
         const now = Date.now();

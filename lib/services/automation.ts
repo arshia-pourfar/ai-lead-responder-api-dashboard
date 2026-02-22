@@ -69,7 +69,8 @@ async function sendPreparedEmail(
         recipient,
         finalReply,
         email.category || "general",
-        userId
+        userId,
+        { allowWhenAutoEmailDisabled: true }
     );
 
     if (!sendResult.success) {
