@@ -29,6 +29,40 @@ const EMAIL_HOST_KEYS = ["EMAIL_HOST", "SMTP_HOST", "MAIL_HOST"] as const;
 const EMAIL_PORT_KEYS = ["EMAIL_PORT", "SMTP_PORT", "MAIL_PORT"] as const;
 const EMAIL_SECURE_KEYS = ["EMAIL_SECURE", "SMTP_SECURE", "MAIL_SECURE"] as const;
 const EMAIL_FROM_KEYS = ["EMAIL_FROM", "SMTP_FROM", "MAIL_FROM"] as const;
+type EmailEnvKey =
+    | (typeof EMAIL_USER_KEYS)[number]
+    | (typeof EMAIL_PASS_KEYS)[number]
+    | (typeof EMAIL_HOST_KEYS)[number]
+    | (typeof EMAIL_PORT_KEYS)[number]
+    | (typeof EMAIL_SECURE_KEYS)[number]
+    | (typeof EMAIL_FROM_KEYS)[number];
+
+// IMPORTANT: Next.js production bundles are more reliable with statically referenced
+// env vars than dynamic process.env[key] lookups.
+const EMAIL_ENV: Record<EmailEnvKey, string | undefined> = {
+    EMAIL_USER: process.env.EMAIL_USER,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_USERNAME: process.env.SMTP_USERNAME,
+    MAIL_USER: process.env.MAIL_USER,
+    MAIL_USERNAME: process.env.MAIL_USERNAME,
+    EMAIL_PASS: process.env.EMAIL_PASS,
+    SMTP_PASS: process.env.SMTP_PASS,
+    SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+    MAIL_PASS: process.env.MAIL_PASS,
+    MAIL_PASSWORD: process.env.MAIL_PASSWORD,
+    EMAIL_HOST: process.env.EMAIL_HOST,
+    SMTP_HOST: process.env.SMTP_HOST,
+    MAIL_HOST: process.env.MAIL_HOST,
+    EMAIL_PORT: process.env.EMAIL_PORT,
+    SMTP_PORT: process.env.SMTP_PORT,
+    MAIL_PORT: process.env.MAIL_PORT,
+    EMAIL_SECURE: process.env.EMAIL_SECURE,
+    SMTP_SECURE: process.env.SMTP_SECURE,
+    MAIL_SECURE: process.env.MAIL_SECURE,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    SMTP_FROM: process.env.SMTP_FROM,
+    MAIL_FROM: process.env.MAIL_FROM,
+};
 
 function normalizeEnvValue(value: string | undefined) {
     if (!value) return null;
@@ -47,11 +81,11 @@ function normalizeEnvValue(value: string | undefined) {
     return trimmed;
 }
 
-function getOptionalEnv(name: string) {
-    return normalizeEnvValue(process.env[name] || process.env[name.toLowerCase()]);
+function getOptionalEnv(name: EmailEnvKey) {
+    return normalizeEnvValue(EMAIL_ENV[name]);
 }
 
-function getFirstAvailableEnv(names: readonly string[]) {
+function getFirstAvailableEnv(names: readonly EmailEnvKey[]) {
     for (const name of names) {
         const value = getOptionalEnv(name);
         if (value) {
@@ -61,7 +95,7 @@ function getFirstAvailableEnv(names: readonly string[]) {
     return null;
 }
 
-function getRequiredEnv(names: readonly string[]) {
+function getRequiredEnv(names: readonly EmailEnvKey[]) {
     const value = getFirstAvailableEnv(names);
     if (value) {
         return value;

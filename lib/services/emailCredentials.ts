@@ -21,6 +21,19 @@ const ENV_PASSWORD_KEYS = [
     "MAIL_PASS",
     "MAIL_PASSWORD",
 ] as const;
+type CredentialEnvKey = (typeof ENV_EMAIL_KEYS)[number] | (typeof ENV_PASSWORD_KEYS)[number];
+const CREDENTIAL_ENV: Record<CredentialEnvKey, string | undefined> = {
+    EMAIL_USER: process.env.EMAIL_USER,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_USERNAME: process.env.SMTP_USERNAME,
+    MAIL_USER: process.env.MAIL_USER,
+    MAIL_USERNAME: process.env.MAIL_USERNAME,
+    EMAIL_PASS: process.env.EMAIL_PASS,
+    SMTP_PASS: process.env.SMTP_PASS,
+    SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+    MAIL_PASS: process.env.MAIL_PASS,
+    MAIL_PASSWORD: process.env.MAIL_PASSWORD,
+};
 let hasLoggedFallbackKeyWarning = false;
 
 function diagnosticsLog(message: string, payload?: Record<string, unknown>): void {
@@ -97,9 +110,9 @@ function normalizeRawEnv(value: string | undefined): string {
     return trimmed;
 }
 
-function getEnvByPriority(keys: readonly string[]): string {
+function getEnvByPriority(keys: readonly CredentialEnvKey[]): string {
     for (const key of keys) {
-        const value = normalizeRawEnv(process.env[key] || process.env[key.toLowerCase()]);
+        const value = normalizeRawEnv(CREDENTIAL_ENV[key]);
         if (value) {
             return value;
         }
