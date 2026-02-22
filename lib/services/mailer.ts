@@ -9,12 +9,26 @@ interface SendEmailPayload {
 
 let cachedTransporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
-const EMAIL_USER_KEYS = ["EMAIL_USER", "SMTP_USER", "SMTP_USERNAME"] as const;
-const EMAIL_PASS_KEYS = ["EMAIL_PASS", "SMTP_PASS", "SMTP_PASSWORD"] as const;
-const EMAIL_HOST_KEYS = ["EMAIL_HOST", "SMTP_HOST"] as const;
-const EMAIL_PORT_KEYS = ["EMAIL_PORT", "SMTP_PORT"] as const;
-const EMAIL_SECURE_KEYS = ["EMAIL_SECURE", "SMTP_SECURE"] as const;
-const EMAIL_FROM_KEYS = ["EMAIL_FROM", "SMTP_FROM"] as const;
+const EMAIL_CONFIG_DIAGNOSTICS =
+    (process.env.EMAIL_CONFIG_DIAGNOSTICS || "").toLowerCase() === "true";
+const EMAIL_USER_KEYS = [
+    "EMAIL_USER",
+    "SMTP_USER",
+    "SMTP_USERNAME",
+    "MAIL_USER",
+    "MAIL_USERNAME",
+] as const;
+const EMAIL_PASS_KEYS = [
+    "EMAIL_PASS",
+    "SMTP_PASS",
+    "SMTP_PASSWORD",
+    "MAIL_PASS",
+    "MAIL_PASSWORD",
+] as const;
+const EMAIL_HOST_KEYS = ["EMAIL_HOST", "SMTP_HOST", "MAIL_HOST"] as const;
+const EMAIL_PORT_KEYS = ["EMAIL_PORT", "SMTP_PORT", "MAIL_PORT"] as const;
+const EMAIL_SECURE_KEYS = ["EMAIL_SECURE", "SMTP_SECURE", "MAIL_SECURE"] as const;
+const EMAIL_FROM_KEYS = ["EMAIL_FROM", "SMTP_FROM", "MAIL_FROM"] as const;
 
 function normalizeEnvValue(value: string | undefined) {
     if (!value) return null;
@@ -34,7 +48,7 @@ function normalizeEnvValue(value: string | undefined) {
 }
 
 function getOptionalEnv(name: string) {
-    return normalizeEnvValue(process.env[name]);
+    return normalizeEnvValue(process.env[name] || process.env[name.toLowerCase()]);
 }
 
 function getFirstAvailableEnv(names: readonly string[]) {
@@ -51,6 +65,18 @@ function getRequiredEnv(names: readonly string[]) {
     const value = getFirstAvailableEnv(names);
     if (value) {
         return value;
+    }
+
+    if (EMAIL_CONFIG_DIAGNOSTICS) {
+        const diagnostics = names.reduce<Record<string, boolean>>((acc, key) => {
+            acc[key] = Boolean(getOptionalEnv(key));
+            return acc;
+        }, {});
+        console.error("[mailer] Missing email config", {
+            checkedKeys: diagnostics,
+            nodeEnv: process.env.NODE_ENV || null,
+            vercelEnv: process.env.VERCEL_ENV || null,
+        });
     }
 
     throw new Error(`Missing email config: set one of ${names.join(", ")}.`);
@@ -77,7 +103,7 @@ function getTransporter() {
     }
 
     const user = getRequiredEnv(EMAIL_USER_KEYS);
-    const pass = getRequiredEnv(EMAIL_PASS_KEYS);
+    const pass = getRequiredEnv(EMAIL_PASS_KEYS).replace(/\s+/g, "");
     const secure = isTruthy(getFirstAvailableEnv(EMAIL_SECURE_KEYS)) || port === 465;
 
     cachedTransporter = nodemailer.createTransport({

@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        await requestPasswordReset(parsed.data.email, req.nextUrl.origin);
+        await requestPasswordReset(parsed.data.email);
     } catch (error) {
         console.error("Forgot password request failed:", error);
     }

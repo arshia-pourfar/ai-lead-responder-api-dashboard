@@ -7,6 +7,7 @@ import { sendEmail } from "@/lib/services/mailer";
 const PASSWORD_RESET_EXPIRY = "30m";
 const PASSWORD_RESET_SECRET =
     process.env.PASSWORD_RESET_SECRET || process.env.JWT_SECRET || "secret123";
+const PRIMARY_APP_ORIGIN = "https://ai-lead-responder-api-dashboard.vercel.app";
 
 interface PasswordResetTokenPayload {
     purpose: "password_reset";
@@ -16,51 +17,8 @@ interface PasswordResetTokenPayload {
     exp?: number;
 }
 
-function normalizeOrigin(value: string | undefined): string {
-    const trimmed = (value || "").trim();
-    if (!trimmed) return "";
-
-    const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-
-    try {
-        return new URL(withProtocol).origin.replace(/\/+$/, "");
-    } catch {
-        return "";
-    }
-}
-
-function isLocalHostname(hostname: string): boolean {
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-}
-
-function isLocalOrigin(origin: string): boolean {
-    try {
-        return isLocalHostname(new URL(origin).hostname);
-    } catch {
-        return false;
-    }
-}
-
-function resolveAppOrigin(requestOrigin?: string): string {
-    const candidates = [
-        requestOrigin,
-        process.env.APP_URL,
-        process.env.NEXT_PUBLIC_APP_URL,
-        process.env.VERCEL_PROJECT_PRODUCTION_URL,
-        process.env.VERCEL_URL,
-    ];
-    const isProduction = process.env.NODE_ENV === "production";
-
-    for (const candidate of candidates) {
-        const normalized = normalizeOrigin(candidate);
-        if (!normalized) continue;
-        if (isProduction && isLocalOrigin(normalized)) continue;
-        return normalized;
-    }
-
-    throw new Error(
-        "Missing app origin config: set APP_URL/NEXT_PUBLIC_APP_URL (or VERCEL_* vars)."
-    );
+function resolveAppOrigin(): string {
+    return PRIMARY_APP_ORIGIN;
 }
 
 function buildResetPasswordEmail(resetUrl: string) {
@@ -105,10 +63,7 @@ function verifyResetToken(token: string): PasswordResetTokenPayload {
     return payload;
 }
 
-export async function requestPasswordReset(
-    email: string,
-    requestOrigin?: string
-): Promise<void> {
+export async function requestPasswordReset(email: string): Promise<void> {
     const normalizedEmail = normalizeEmail(email);
     const user = await prisma.user.findUnique({
         where: { email: normalizedEmail },
@@ -120,7 +75,7 @@ export async function requestPasswordReset(
     }
 
     const token = signResetToken(user.id, user.email);
-    const appOrigin = resolveAppOrigin(requestOrigin);
+    const appOrigin = resolveAppOrigin();
     const resetUrl = `${appOrigin}/reset-password?token=${encodeURIComponent(token)}`;
     const template = buildResetPasswordEmail(resetUrl);
 

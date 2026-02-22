@@ -32,14 +32,32 @@ function buildSmtpConfigs(user: string, pass: string): SMTPTransport.Options[] {
         socketTimeout: 20_000,
     };
 
-    const envHost = (process.env.SMTP_HOST || process.env.EMAIL_HOST || "").trim();
+    const envHost = (
+        process.env.SMTP_HOST ||
+        process.env.EMAIL_HOST ||
+        process.env.MAIL_HOST ||
+        process.env.smtp_host ||
+        process.env.email_host ||
+        process.env.mail_host ||
+        ""
+    ).trim();
     const envPort = Number.parseInt(
-        process.env.SMTP_PORT || process.env.EMAIL_PORT || "",
+        process.env.SMTP_PORT ||
+            process.env.EMAIL_PORT ||
+            process.env.MAIL_PORT ||
+            process.env.smtp_port ||
+            process.env.email_port ||
+            process.env.mail_port ||
+            "",
         10
     );
     const envSecure = (
         process.env.SMTP_SECURE ||
         process.env.EMAIL_SECURE ||
+        process.env.MAIL_SECURE ||
+        process.env.smtp_secure ||
+        process.env.email_secure ||
+        process.env.mail_secure ||
         ""
     ).toLowerCase().trim();
     const hasEnvSmtp = Boolean(envHost && Number.isFinite(envPort) && envPort > 0);

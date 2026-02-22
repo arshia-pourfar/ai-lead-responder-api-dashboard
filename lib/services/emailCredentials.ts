@@ -7,8 +7,20 @@ const HASH_ROUNDS = 12;
 const DEV_FALLBACK_ENCRYPTION_KEY = "local-dev-email-credentials-key";
 const EMAIL_CREDENTIAL_DIAGNOSTICS =
     (process.env.EMAIL_CREDENTIAL_DIAGNOSTICS || "").toLowerCase() === "true";
-const ENV_EMAIL_KEYS = ["EMAIL_USER", "SMTP_USER", "SMTP_USERNAME"] as const;
-const ENV_PASSWORD_KEYS = ["EMAIL_PASS", "SMTP_PASS", "SMTP_PASSWORD"] as const;
+const ENV_EMAIL_KEYS = [
+    "EMAIL_USER",
+    "SMTP_USER",
+    "SMTP_USERNAME",
+    "MAIL_USER",
+    "MAIL_USERNAME",
+] as const;
+const ENV_PASSWORD_KEYS = [
+    "EMAIL_PASS",
+    "SMTP_PASS",
+    "SMTP_PASSWORD",
+    "MAIL_PASS",
+    "MAIL_PASSWORD",
+] as const;
 let hasLoggedFallbackKeyWarning = false;
 
 function diagnosticsLog(message: string, payload?: Record<string, unknown>): void {
@@ -87,7 +99,7 @@ function normalizeRawEnv(value: string | undefined): string {
 
 function getEnvByPriority(keys: readonly string[]): string {
     for (const key of keys) {
-        const value = normalizeRawEnv(process.env[key]);
+        const value = normalizeRawEnv(process.env[key] || process.env[key.toLowerCase()]);
         if (value) {
             return value;
         }
