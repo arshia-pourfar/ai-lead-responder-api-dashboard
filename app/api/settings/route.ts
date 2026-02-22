@@ -51,7 +51,7 @@ function getAuthorizedUser(req: NextRequest): AuthUser | null {
 function getDefaultEmailSettings(): UserEmailSettings {
     return {
         registrationEmail: "",
-        useRegistrationEmail: true,
+        useRegistrationEmail: false,
         emailAddress: "",
         hasAppPassword: false,
     };
@@ -183,10 +183,6 @@ export async function POST(req: NextRequest) {
             shouldUpdateEmailSettings
                 ? saveUserEmailSettings({
                     userId: user.id,
-                    useRegistrationEmail: parseBoolean(
-                        emailSettingsInput?.useRegistrationEmail,
-                        true
-                    ),
                     emailAddress:
                         typeof emailSettingsInput?.emailAddress === "string"
                             ? emailSettingsInput.emailAddress

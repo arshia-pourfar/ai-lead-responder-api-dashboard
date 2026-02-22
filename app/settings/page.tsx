@@ -45,7 +45,6 @@ export default function SettingsPage() {
     const [autoSendReadyEmails, setAutoSendReadyEmails] = useState(false);
 
     const [registrationEmail, setRegistrationEmail] = useState("");
-    const [useRegistrationEmail, setUseRegistrationEmail] = useState(true);
     const [emailAddress, setEmailAddress] = useState("");
     const [emailAppPassword, setEmailAppPassword] = useState("");
     const [hasSavedAppPassword, setHasSavedAppPassword] = useState(false);
@@ -103,7 +102,7 @@ export default function SettingsPage() {
                     },
                     emailSettings: {
                         registrationEmail: "",
-                        useRegistrationEmail: true,
+                        useRegistrationEmail: false,
                         emailAddress: "",
                         hasAppPassword: false,
                     },
@@ -134,13 +133,8 @@ export default function SettingsPage() {
                 );
 
                 setRegistrationEmail(data.emailSettings?.registrationEmail || "");
-                setUseRegistrationEmail(
-                    data.emailSettings?.useRegistrationEmail !== false
-                );
                 setEmailAddress(
-                    data.emailSettings?.emailAddress ||
-                    data.emailSettings?.registrationEmail ||
-                    ""
+                    data.emailSettings?.emailAddress || ""
                 );
                 setHasSavedAppPassword(Boolean(data.emailSettings?.hasAppPassword));
                 setEmailAppPassword("");
@@ -181,7 +175,6 @@ export default function SettingsPage() {
                         autoSendReadyEmails,
                     },
                     emailSettings: {
-                        useRegistrationEmail,
                         emailAddress,
                         appPassword: emailAppPassword,
                     },
@@ -222,13 +215,8 @@ export default function SettingsPage() {
             );
 
             setRegistrationEmail(payload.emailSettings?.registrationEmail || "");
-            setUseRegistrationEmail(
-                payload.emailSettings?.useRegistrationEmail !== false
-            );
             setEmailAddress(
-                payload.emailSettings?.emailAddress ||
-                payload.emailSettings?.registrationEmail ||
-                ""
+                payload.emailSettings?.emailAddress || ""
             );
             setHasSavedAppPassword(Boolean(payload.emailSettings?.hasAppPassword));
             setEmailAppPassword("");
@@ -297,24 +285,13 @@ export default function SettingsPage() {
             <div className="border border-border rounded-xl p-4 flex flex-col gap-5">
                 <div className="flex flex-col gap-2 text-sm">
                     <label className="font-medium">Email Settings</label>
-                    <label className="flex items-center gap-2 text-xs text-muted">
-                        <input
-                            type="checkbox"
-                            checked={useRegistrationEmail}
-                            onChange={(event) =>
-                                setUseRegistrationEmail(event.target.checked)
-                            }
-                        />
-                        Use registration email ({registrationEmail || "not available"})
-                    </label>
 
                     <input
                         type="email"
                         value={emailAddress}
                         onChange={(event) => setEmailAddress(event.target.value)}
-                        disabled={useRegistrationEmail}
                         placeholder="example@gmail.com"
-                        className="border border-border rounded-md px-3 py-2 outline-none text-sm disabled:opacity-60"
+                        className="border border-border rounded-md px-3 py-2 outline-none text-sm"
                     />
 
                     <input
@@ -324,13 +301,13 @@ export default function SettingsPage() {
                         placeholder={
                             hasSavedAppPassword
                                 ? "****************"
-                                : "Enter Gmail app password (16+ chars)"
+                                : "Enter email password or app password"
                         }
                         className="border border-border rounded-md px-3 py-2 outline-none text-sm"
                         autoComplete="new-password"
                     />
                     <p className="text-xs text-muted">
-                        Password is hashed and encrypted at rest. Leave blank to keep current password.
+                        This password is encrypted at rest. Leave blank only if you already saved one.
                     </p>
                 </div>
 

@@ -2,38 +2,10 @@ import prisma from "@/lib/prisma";
 import { compare, hash } from "bcryptjs";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 
-const GMAIL_APP_PASSWORD_LENGTH = 16;
 const HASH_ROUNDS = 12;
 const DEV_FALLBACK_ENCRYPTION_KEY = "local-dev-email-credentials-key";
 const EMAIL_CREDENTIAL_DIAGNOSTICS =
     (process.env.EMAIL_CREDENTIAL_DIAGNOSTICS || "").toLowerCase() === "true";
-const ENV_EMAIL_KEYS = [
-    "EMAIL_USER",
-    "SMTP_USER",
-    "SMTP_USERNAME",
-    "MAIL_USER",
-    "MAIL_USERNAME",
-] as const;
-const ENV_PASSWORD_KEYS = [
-    "EMAIL_PASS",
-    "SMTP_PASS",
-    "SMTP_PASSWORD",
-    "MAIL_PASS",
-    "MAIL_PASSWORD",
-] as const;
-type CredentialEnvKey = (typeof ENV_EMAIL_KEYS)[number] | (typeof ENV_PASSWORD_KEYS)[number];
-const CREDENTIAL_ENV: Record<CredentialEnvKey, string | undefined> = {
-    EMAIL_USER: process.env.EMAIL_USER,
-    SMTP_USER: process.env.SMTP_USER,
-    SMTP_USERNAME: process.env.SMTP_USERNAME,
-    MAIL_USER: process.env.MAIL_USER,
-    MAIL_USERNAME: process.env.MAIL_USERNAME,
-    EMAIL_PASS: process.env.EMAIL_PASS,
-    SMTP_PASS: process.env.SMTP_PASS,
-    SMTP_PASSWORD: process.env.SMTP_PASSWORD,
-    MAIL_PASS: process.env.MAIL_PASS,
-    MAIL_PASSWORD: process.env.MAIL_PASSWORD,
-};
 let hasLoggedFallbackKeyWarning = false;
 
 function diagnosticsLog(message: string, payload?: Record<string, unknown>): void {
@@ -63,12 +35,11 @@ export interface UserEmailSettings {
 export interface ResolvedEmailCredentials {
     emailAddress: string;
     appPassword: string;
-    source: "user" | "env";
+    source: "user";
 }
 
 interface SaveUserEmailSettingsInput {
     userId: string;
-    useRegistrationEmail?: boolean;
     emailAddress?: string;
     appPassword?: string;
 }
@@ -89,35 +60,6 @@ function normalizeEmailAddress(value: string): string {
 
 function normalizeAppPassword(value: string): string {
     return value.replace(/\s+/g, "").trim();
-}
-
-function validateAppPassword(value: string): boolean {
-    return value.length === GMAIL_APP_PASSWORD_LENGTH;
-}
-
-function normalizeRawEnv(value: string | undefined): string {
-    if (!value) return "";
-    const trimmed = value.trim();
-    if (!trimmed) return "";
-
-    if (
-        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-        (trimmed.startsWith("'") && trimmed.endsWith("'"))
-    ) {
-        return trimmed.slice(1, -1).trim();
-    }
-
-    return trimmed;
-}
-
-function getEnvByPriority(keys: readonly CredentialEnvKey[]): string {
-    for (const key of keys) {
-        const value = normalizeRawEnv(CREDENTIAL_ENV[key]);
-        if (value) {
-            return value;
-        }
-    }
-    return "";
 }
 
 function getEncryptionKey(): Buffer {
@@ -217,13 +159,12 @@ async function getUserCredentialRow(userId: string): Promise<UserCredentialRow |
 }
 
 function buildUserEmailSettings(row: UserCredentialRow): UserEmailSettings {
-    const useRegistrationEmail = !row.emailAddress;
-    const effectiveEmail = useRegistrationEmail ? row.email : row.emailAddress;
+    const effectiveEmail = row.emailAddress ? normalizeEmailAddress(row.emailAddress) : "";
 
     return {
         registrationEmail: row.email,
-        useRegistrationEmail,
-        emailAddress: effectiveEmail || row.email,
+        useRegistrationEmail: false,
+        emailAddress: effectiveEmail,
         hasAppPassword: Boolean(row.emailAppPasswordHash && row.emailAppPasswordEncrypted),
     };
 }
@@ -304,28 +245,6 @@ async function resolveStoredUserCredentials(
     return null;
 }
 
-function resolveEnvCredentials(): ResolvedEmailCredentials | null {
-    const envEmail = normalizeEmailAddress(getEnvByPriority(ENV_EMAIL_KEYS));
-    const envPassword = normalizeAppPassword(getEnvByPriority(ENV_PASSWORD_KEYS));
-
-    diagnosticsLog("resolveEnvCredentials", {
-        hasEnvEmail: Boolean(envEmail),
-        hasEnvPassword: Boolean(envPassword),
-        envEmail: envEmail || null,
-        envPasswordLength: envPassword.length,
-    });
-
-    if (isValidEmailAddress(envEmail) && envPassword) {
-        return {
-            emailAddress: envEmail,
-            appPassword: envPassword,
-            source: "env",
-        };
-    }
-
-    return null;
-}
-
 export async function resolveEmailCredentialCandidates(
     userId?: string
 ): Promise<ResolvedEmailCredentials[]> {
@@ -336,11 +255,6 @@ export async function resolveEmailCredentialCandidates(
         if (userCredentials) {
             candidates.push(userCredentials);
         }
-    }
-
-    const envCredentials = resolveEnvCredentials();
-    if (envCredentials) {
-        candidates.push(envCredentials);
     }
 
     const unique = new Map<string, ResolvedEmailCredentials>();
@@ -366,7 +280,7 @@ export async function getUserEmailSettings(userId: string): Promise<UserEmailSet
     if (!row) {
         return {
             registrationEmail: "",
-            useRegistrationEmail: true,
+            useRegistrationEmail: false,
             emailAddress: "",
             hasAppPassword: false,
         };
@@ -377,7 +291,6 @@ export async function getUserEmailSettings(userId: string): Promise<UserEmailSet
 
 export async function saveUserEmailSettings({
     userId,
-    useRegistrationEmail,
     emailAddress,
     appPassword,
 }: SaveUserEmailSettingsInput): Promise<UserEmailSettings> {
@@ -386,17 +299,21 @@ export async function saveUserEmailSettings({
         throw new Error("User not found");
     }
 
-    const selectedUseRegistrationEmail = Boolean(useRegistrationEmail);
     const normalizedManualEmail = normalizeEmailAddress(emailAddress || "");
-    const selectedEmail = selectedUseRegistrationEmail ? row.email : normalizedManualEmail;
+    const selectedEmail = normalizedManualEmail;
 
     if (!isValidEmailAddress(selectedEmail)) {
         throw new Error("Valid email address is required");
     }
 
     const normalizedAppPassword = normalizeAppPassword(appPassword || "");
-    if (normalizedAppPassword && !validateAppPassword(normalizedAppPassword)) {
-        throw new Error("App password must be exactly 16 characters");
+    const hasExistingPassword = Boolean(
+        row.emailAppPasswordHash && row.emailAppPasswordEncrypted
+    );
+    if (!hasExistingPassword && !normalizedAppPassword) {
+        throw new Error(
+            "Email password is required for first-time setup. Leave blank only when a password is already saved."
+        );
     }
 
     let nextHash = row.emailAppPasswordHash;
@@ -411,7 +328,7 @@ export async function saveUserEmailSettings({
         await prisma.$executeRaw`
             UPDATE "User"
             SET
-                "emailAddress" = ${selectedUseRegistrationEmail ? null : selectedEmail},
+                "emailAddress" = ${selectedEmail},
                 "emailAppPasswordHash" = ${nextHash},
                 "emailAppPasswordEncrypted" = ${nextEncrypted}
             WHERE id = ${userId}
