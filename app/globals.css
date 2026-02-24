@@ -142,3 +142,25 @@ body {
   animation: shimmer 1.6s linear infinite;
   pointer-events: none;
 }
+
+.email-html-content {
+  line-height: 1.55;
+}
+
+.email-html-content * {
+  max-width: 100%;
+}
+
+.email-html-content img {
+  height: auto;
+}
+
+.email-html-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.email-html-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}

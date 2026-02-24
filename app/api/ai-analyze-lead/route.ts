@@ -2,6 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeLead } from "@/lib/services/gemini";
 import { authGuard } from "@/lib/middleware/authMiddleware";
+import {
+    getAiHttpStatus,
+    getAiUserMessage,
+    isAiGenerationError,
+} from "@/lib/services/aiErrors";
 
 export async function POST(req: NextRequest) {
     try {
@@ -11,13 +16,23 @@ export async function POST(req: NextRequest) {
         const userId =
             user && typeof user === "object" && "id" in user ? String(user.id) : undefined;
 
-        if (!message) return NextResponse.json({ reply: "No message provided" }, { status: 400 });
+        if (!message) return NextResponse.json({ error: "No message provided" }, { status: 400 });
 
         const result = await analyzeLead(category || "support", message, userId);
 
         return NextResponse.json(result);
     } catch (err) {
+        if (isAiGenerationError(err)) {
+            return NextResponse.json(
+                {
+                    error: getAiUserMessage(err),
+                    code: err.code,
+                },
+                { status: getAiHttpStatus(err) }
+            );
+        }
+
         console.error(err);
-        return NextResponse.json({ reply: "Failed to generate AI reply" }, { status: 500 });
+        return NextResponse.json({ error: "Failed to generate AI reply" }, { status: 500 });
     }
 }

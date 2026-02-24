@@ -6,6 +6,10 @@ import { detectCategory } from "@/lib/services/classifier";
 import { Prisma } from "@prisma/client";
 import { getUserAutomationSettings } from "@/lib/services/userSettings";
 import { autoSendPendingReadyEmails } from "@/lib/services/automation";
+import {
+    isDatabaseUnavailableNow,
+    markDatabaseUnavailable,
+} from "@/lib/services/dbResilience";
 
 export const dynamic = "force-dynamic";
 
@@ -205,22 +209,14 @@ function pickFinalReply(manualReply?: string, aiReply?: string): string {
     return (aiReply || "").trim();
 }
 
-function isDatabaseConnectivityError(error: unknown): boolean {
-    if (!(error instanceof Error)) return false;
-
-    const message = error.message.toLowerCase();
-    return (
-        message.includes("can't reach database server") ||
-        message.includes("prismaclientinitializationerror") ||
-        message.includes("p1001") ||
-        message.includes("timed out")
-    );
-}
-
 export async function GET(req: NextRequest) {
     const user = authGuard(req);
     if (!user || typeof user !== "object" || !("id" in user)) {
         return NextResponse.json([], { status: 401 });
+    }
+
+    if (isDatabaseUnavailableNow()) {
+        return NextResponse.json([], { status: 200 });
     }
 
     try {
@@ -254,15 +250,13 @@ export async function GET(req: NextRequest) {
         };
 
         if (pagination.enabled && !confidenceSort) {
-            const [total, emails] = await Promise.all([
-                prisma.email.count({ where }),
-                prisma.email.findMany({
-                    where,
-                    orderBy: getOrderBy(sortFilter),
-                    skip: pagination.offset,
-                    take: pagination.limit,
-                }),
-            ]);
+            const total = await prisma.email.count({ where });
+            const emails = await prisma.email.findMany({
+                where,
+                orderBy: getOrderBy(sortFilter),
+                skip: pagination.offset,
+                take: pagination.limit,
+            });
 
             return NextResponse.json({
                 emails: emails.map(mapEmailResponse),
@@ -300,10 +294,10 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json(sortedEmails.map(mapEmailResponse));
     } catch (error) {
-        console.error("READY TO SEND GET ERROR:", error);
-        if (isDatabaseConnectivityError(error)) {
+        if (markDatabaseUnavailable(error, "ready-to-send GET")) {
             return NextResponse.json([], { status: 200 });
         }
+        console.error("READY TO SEND GET ERROR:", error);
         return NextResponse.json([], { status: 500 });
     }
 }
@@ -321,6 +315,13 @@ export async function POST(req: NextRequest) {
 
     const { emailId, subject, sender, saveOnly, sendNow } = body;
     const finalReply = pickFinalReply(body.manualReply, body.aiReply);
+
+    if (isDatabaseUnavailableNow()) {
+        return NextResponse.json(
+            { error: "Database is temporarily unavailable. Please try again shortly." },
+            { status: 503 }
+        );
+    }
 
     try {
         if (saveOnly) {
@@ -467,6 +468,12 @@ export async function POST(req: NextRequest) {
             category: created.category,
         });
     } catch (error) {
+        if (markDatabaseUnavailable(error, "ready-to-send POST")) {
+            return NextResponse.json(
+                { error: "Database is temporarily unavailable. Please try again shortly." },
+                { status: 503 }
+            );
+        }
         console.error("READY TO SEND POST ERROR:", error);
         return NextResponse.json({ error: "Failed to process ready-to-send email" }, { status: 500 });
     }

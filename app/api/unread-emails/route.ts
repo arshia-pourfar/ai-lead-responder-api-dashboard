@@ -13,6 +13,7 @@ interface UnreadEmailResponse {
     subject: string;
     sender: string;
     body: string;
+    bodyHtml?: string;
     aiReply: string;
     manualReply: string;
     status: "unread";
@@ -24,6 +25,7 @@ interface UnreadEmailResponse {
 interface UnreadEmailsGetResponse {
     emails: UnreadEmailResponse[];
     total: number;
+    warning?: string;
 }
 
 interface ApproveBody {
@@ -51,9 +53,11 @@ const UNREAD_FETCH_TIMEOUT_MS = 12_000;
 const UNREAD_AUTOMATION_COOLDOWN_MS = 30_000;
 const UNREAD_AUTOMATION_BATCH_LIMIT = 20;
 const READY_AUTOSEND_COOLDOWN_MS = 30_000;
+const UNREAD_AUTOMATION_WARNING_TTL_MS = 60_000;
 const unreadCache = new Map<string, { expiresAt: number; payload: UnreadEmailsGetResponse }>();
 const unreadAutomationInFlight = new Set<string>();
 const unreadAutomationLastRun = new Map<string, number>();
+const unreadAutomationWarnings = new Map<string, { message: string; expiresAt: number }>();
 const readyAutoSendInFlight = new Set<string>();
 const readyAutoSendLastRun = new Map<string, number>();
 
@@ -162,6 +166,25 @@ function runUnreadAutomationInBackground(
 
     void autoPrepareUnreadEmails(userId, batch, { autoSendReadyEmails })
         .then((automationResult) => {
+            const warningMessage = automationResult.errors.some((message) =>
+                message.includes("Daily AI request limit has been reached.")
+            )
+                ? "Daily AI request limit has been reached."
+                : automationResult.errors.some((message) =>
+                    message.includes("No response received from AI.")
+                )
+                    ? "No response received from AI. Unread emails were not marked as read."
+                    : undefined;
+            if (warningMessage) {
+                unreadAutomationWarnings.set(userId, {
+                    message: warningMessage,
+                    expiresAt: Date.now() + UNREAD_AUTOMATION_WARNING_TTL_MS,
+                });
+                unreadCache.clear();
+            } else {
+                unreadAutomationWarnings.delete(userId);
+            }
+
             if (
                 automationResult.preparedCount > 0 ||
                 automationResult.sentCount > 0
@@ -180,6 +203,16 @@ function runUnreadAutomationInBackground(
             unreadAutomationInFlight.delete(userId);
             unreadAutomationLastRun.set(userId, Date.now());
         });
+}
+
+function getUnreadAutomationWarning(userId: string): string | undefined {
+    const current = unreadAutomationWarnings.get(userId);
+    if (!current) return undefined;
+    if (current.expiresAt <= Date.now()) {
+        unreadAutomationWarnings.delete(userId);
+        return undefined;
+    }
+    return current.message;
 }
 
 function canRunReadyAutoSend(userId: string): boolean {
@@ -261,7 +294,14 @@ export async function GET(req: NextRequest) {
         const now = Date.now();
         const cached = unreadCache.get(cacheKey);
         if (cached && cached.expiresAt > now) {
-            return NextResponse.json<UnreadEmailsGetResponse>(cached.payload, { status: 200 });
+            const cachedWarning = getUnreadAutomationWarning(String(user.id));
+            return NextResponse.json<UnreadEmailsGetResponse>(
+                {
+                    ...cached.payload,
+                    warning: cachedWarning || cached.payload.warning,
+                },
+                { status: 200 }
+            );
         }
 
         const shouldFetchAllUnread = requiresGlobalFiltering;
@@ -346,6 +386,7 @@ export async function GET(req: NextRequest) {
             subject: e.subject ?? "(No Subject)",
             sender: e.from ?? "unknown",
             body: e.text ?? "",
+            bodyHtml: e.html ?? "",
             aiReply: "",
             manualReply: "",
             status: "unread",
@@ -354,7 +395,11 @@ export async function GET(req: NextRequest) {
             createdAt: (e.date ?? new Date()).toISOString(),
         }));
 
-        const payload: UnreadEmailsGetResponse = { emails: formatted, total: totalFiltered };
+        const payload: UnreadEmailsGetResponse = {
+            emails: formatted,
+            total: totalFiltered,
+            warning: getUnreadAutomationWarning(String(user.id)),
+        };
         unreadCache.set(cacheKey, { expiresAt: now + CACHE_TTL_MS, payload });
 
         return NextResponse.json<UnreadEmailsGetResponse>(payload, { status: 200 });
@@ -371,14 +416,24 @@ export async function GET(req: NextRequest) {
         const stale = unreadCache.get(fallbackCacheKey);
 
         if (stale) {
-            return NextResponse.json<UnreadEmailsGetResponse>(stale.payload, {
-                status: 200,
-                headers: { "x-cache": "stale" },
-            });
+            const staleWarning = getUnreadAutomationWarning(String(user.id));
+            return NextResponse.json<UnreadEmailsGetResponse>(
+                {
+                    ...stale.payload,
+                    warning: staleWarning || stale.payload.warning,
+                },
+                {
+                    status: 200,
+                    headers: staleWarning
+                        ? { "x-cache": "stale", "x-unread-warning": staleWarning }
+                        : { "x-cache": "stale" },
+                }
+            );
         }
 
+        const fallbackWarning = getUnreadAutomationWarning(String(user.id));
         return NextResponse.json<UnreadEmailsGetResponse>(
-            { emails: [], total: 0 },
+            { emails: [], total: 0, warning: fallbackWarning },
             { status: 200 }
         );
     }

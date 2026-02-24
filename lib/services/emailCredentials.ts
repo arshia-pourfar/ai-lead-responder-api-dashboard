@@ -1,6 +1,10 @@
 import prisma from "@/lib/prisma";
 import { compare, hash } from "bcryptjs";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
+import {
+    isDatabaseUnavailableNow,
+    markDatabaseUnavailable,
+} from "@/lib/services/dbResilience";
 
 const HASH_ROUNDS = 12;
 const DEV_FALLBACK_ENCRYPTION_KEY = "local-dev-email-credentials-key";
@@ -123,6 +127,10 @@ function decryptSecret(payload: string): string {
 }
 
 async function getUserCredentialRow(userId: string): Promise<UserCredentialRow | null> {
+    if (isDatabaseUnavailableNow()) {
+        return null;
+    }
+
     try {
         const rows = await prisma.$queryRaw<UserCredentialRow[]>`
             SELECT
@@ -137,6 +145,10 @@ async function getUserCredentialRow(userId: string): Promise<UserCredentialRow |
         `;
         return rows[0] ?? null;
     } catch (error) {
+        if (markDatabaseUnavailable(error, "getUserCredentialRow")) {
+            return null;
+        }
+
         if (!isMissingColumnError(error)) {
             throw error;
         }
@@ -239,7 +251,7 @@ async function resolveStoredUserCredentials(
             source: "user",
         };
     } catch (error) {
-        console.error("Failed to resolve user email credentials:", error);
+        markDatabaseUnavailable(error, "resolveStoredUserCredentials");
     }
 
     return null;

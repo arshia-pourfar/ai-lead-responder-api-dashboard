@@ -19,6 +19,7 @@ interface Email extends EmailModalData {
 interface UnreadEmailsApiResponse {
     emails: Email[];
     total: number;
+    warning?: string;
 }
 
 interface ReadyEmailResponse {
@@ -73,6 +74,7 @@ export default function UnreadEmailsPage() {
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [warning, setWarning] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [category, setCategory] = useState("unread");
@@ -108,10 +110,12 @@ export default function UnreadEmailsPage() {
                 }
                 setEmails(Array.isArray(data.emails) ? data.emails : []);
                 setTotal(Number.isFinite(data.total) ? data.total : 0);
+                setWarning(typeof data.warning === "string" ? data.warning : null);
             } catch (fetchError) {
                 if ((fetchError as Error).name === "AbortError") return;
                 console.error("Failed to fetch unread emails:", fetchError);
                 setError("Could not load unread emails.");
+                setWarning(null);
                 setEmails([]);
                 setTotal(0);
             } finally {
@@ -271,6 +275,7 @@ export default function UnreadEmailsPage() {
 
             <div className="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto pe-1">
                 {error && <p className="text-xs text-danger">{error}</p>}
+                {!error && warning && <p className="text-xs text-warning">{warning}</p>}
                 {filteredEmails.map((email) => (
                     <EmailItem
                         key={email.id}

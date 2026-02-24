@@ -29,6 +29,16 @@ model User {
   prompts                   Prompt[]
 }
 
+model PendingRegistration {
+  id                        String   @id @default(uuid())
+  name                      String
+  email                     String   @unique
+  passwordHash              String
+  verificationCode          String
+  verificationCodeExpiresAt DateTime
+  createdAt                 DateTime @default(now())
+}
+
 model EmailAccount {
   id       String  @id @default(uuid())
   provider String

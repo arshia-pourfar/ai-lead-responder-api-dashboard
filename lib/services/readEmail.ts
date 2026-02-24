@@ -35,6 +35,7 @@ export interface Email {
     name?: string;
     subject: string;
     text: string;
+    html?: string;
     date?: Date;
 }
 
@@ -244,11 +245,32 @@ function sortUnseenByArrival(imap: ImapClient): Promise<number[]> {
 
 async function parseEmailContent(stream: Readable): Promise<Omit<Email, "uid">> {
     const parsed: ParsedEmail = await simpleParser(stream);
+    const html =
+        typeof parsed.html === "string"
+            ? parsed.html
+            : Buffer.isBuffer(parsed.html)
+                ? parsed.html.toString("utf8")
+                : "";
+    const fallbackText = html
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, "\"")
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+    const text = (parsed.text || "").trim() || fallbackText;
+
     return {
         from: parsed.from?.value?.[0]?.address || "",
         name: parsed.from?.value?.[0]?.name || "",
         subject: parsed.subject || "",
-        text: parsed.text || "",
+        text,
+        html: html || undefined,
         date: parsed.date || undefined,
     };
 }

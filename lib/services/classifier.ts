@@ -56,11 +56,17 @@ export async function detectCategory(message: string, userId?: string): Promise<
     Only return the category name exactly as listed above.
   `;
 
-    const rawCategory = await generateAiText(prompt, {
-        userId,
-        temperature: 0,
-        maxTokens: 50,
-    });
+    let rawCategory: string | null = null;
+    try {
+        rawCategory = await generateAiText(prompt, {
+            userId,
+            temperature: 0,
+            maxTokens: 50,
+        });
+    } catch (error) {
+        console.warn("Category detection fell back to default category:", error);
+        rawCategory = null;
+    }
 
     return normalizeCategoryWithFallback(rawCategory, allowedCategories, FALLBACK_CATEGORY);
 }

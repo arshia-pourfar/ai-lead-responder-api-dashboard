@@ -91,8 +91,12 @@ export default function EmailItem({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ category: "support", message: body }),
                 });
-                const data = await aiRes.json();
-                finalText = data.reply || "Thanks for reaching out!";
+                const data = await aiRes.json().catch(() => null);
+                if (!aiRes.ok) {
+                    throw new Error(data?.error || "Could not generate AI reply");
+                }
+
+                finalText = String(data?.reply || "").trim();
                 setEditText(finalText);
                 setManualText(finalText);
             }
@@ -126,7 +130,8 @@ export default function EmailItem({
             onRemoveEmail?.(id);
         } catch (err) {
             console.error(err);
-            alert("Failed to approve email");
+            const message = err instanceof Error ? err.message : "Failed to approve email";
+            alert(message);
         } finally {
             setApproving(false);
         }

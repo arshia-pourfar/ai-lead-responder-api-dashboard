@@ -4,6 +4,11 @@ import { detectCategory, normalizeCategory } from "@/lib/services/classifier";
 import { sendAutoReply } from "@/lib/services/email";
 import { PrismaClient } from "@prisma/client";
 import { authGuard } from "@/lib/middleware/authMiddleware";
+import {
+    getAiHttpStatus,
+    getAiUserMessage,
+    isAiGenerationError,
+} from "@/lib/services/aiErrors";
 
 const prisma = new PrismaClient();
 export const dynamic = "force-dynamic";
@@ -61,6 +66,16 @@ export async function POST(req: NextRequest) {
             dbEmail,
         });
     } catch (err) {
+        if (isAiGenerationError(err)) {
+            return NextResponse.json(
+                {
+                    error: getAiUserMessage(err),
+                    code: err.code,
+                },
+                { status: getAiHttpStatus(err) }
+            );
+        }
+
         console.error("AnalyzeLead error:", err);
         return NextResponse.json({ error: "Server error" }, { status: 500 });
     }

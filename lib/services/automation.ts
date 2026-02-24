@@ -4,6 +4,12 @@ import { sendAutoReplyDetailed } from "@/lib/services/email";
 import { analyzeLead } from "@/lib/services/gemini";
 import { getUserAutomationSettings } from "@/lib/services/userSettings";
 import { markEmailAsSeenByUid } from "@/lib/services/readEmail";
+import { AiGenerationError, getAiUserMessage } from "@/lib/services/aiErrors";
+import {
+    isDatabaseUnavailableNow,
+    markDatabaseUnavailable,
+    isDatabaseConnectivityError,
+} from "@/lib/services/dbResilience";
 import type { Email as ImapEmail } from "@/lib/services/readEmail";
 
 const DUPLICATE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
@@ -144,7 +150,19 @@ export async function autoPrepareUnreadEmails(
         errors: [],
     };
 
+    if (isDatabaseUnavailableNow()) {
+        result.errors.push("Database is temporarily unavailable. Unread emails were not marked as read.");
+        result.skippedCount = Math.min(unreadEmails.length, maxToProcess);
+        return result;
+    }
+
+    let stopProcessing = false;
+
     for (const unreadEmail of unreadEmails.slice(0, maxToProcess)) {
+        if (stopProcessing) {
+            break;
+        }
+
         const uid = Number.isFinite(unreadEmail.uid) ? unreadEmail.uid : 0;
         if (!uid) {
             result.skippedCount += 1;
@@ -203,7 +221,13 @@ export async function autoPrepareUnreadEmails(
 
             const detectedCategory = await detectCategory(body || subject, userId);
             const analyzed = await analyzeLead(detectedCategory, body || subject, userId);
-            const generatedReply = (analyzed.reply || "").trim() || "Thanks for reaching out!";
+            const generatedReply = (analyzed.reply || "").trim();
+            if (!generatedReply) {
+                throw new AiGenerationError(
+                    "NO_RESPONSE",
+                    "No response received from AI."
+                );
+            }
 
             const created = await prisma.email.create({
                 data: {
@@ -256,6 +280,25 @@ export async function autoPrepareUnreadEmails(
                 }
             }
         } catch (error) {
+            result.skippedCount += 1;
+
+            if (error instanceof AiGenerationError) {
+                result.errors.push(`Skipped uid ${uid}: ${getAiUserMessage(error)}`);
+                if (error.code === "QUOTA_EXCEEDED" || error.code === "NO_RESPONSE") {
+                    stopProcessing = true;
+                }
+                continue;
+            }
+
+            if (isDatabaseConnectivityError(error)) {
+                markDatabaseUnavailable(error, "autoPrepareUnreadEmails");
+                result.errors.push(
+                    "Database is temporarily unavailable. Unread emails were not marked as read."
+                );
+                stopProcessing = true;
+                continue;
+            }
+
             const message = error instanceof Error ? error.message : String(error);
             result.errors.push(`Failed automation for uid ${uid}: ${message}`);
         }
@@ -268,6 +311,14 @@ export async function autoSendPendingReadyEmails(
     userId: string,
     maxToSend = DEFAULT_MAX_AUTO_SEND
 ): Promise<AutoSendReadyResult> {
+    if (isDatabaseUnavailableNow()) {
+        return {
+            sentCount: 0,
+            skippedCount: 0,
+            errors: ["Database is temporarily unavailable. Auto-send is paused."],
+        };
+    }
+
     const initiallyEnabled = await isAutoSendEnabledForUser(userId);
     if (!initiallyEnabled) {
         return {
@@ -325,6 +376,12 @@ export async function autoSendPendingReadyEmails(
                 );
             }
         } catch (error) {
+            if (isDatabaseConnectivityError(error)) {
+                markDatabaseUnavailable(error, "autoSendPendingReadyEmails");
+                result.errors.push("Database is temporarily unavailable. Auto-send is paused.");
+                break;
+            }
+
             result.skippedCount += 1;
             const message = error instanceof Error ? error.message : String(error);
             result.errors.push(`Failed auto-send for ready email ${email.id}: ${message}`);

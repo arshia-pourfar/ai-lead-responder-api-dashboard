@@ -3,6 +3,11 @@ import {
     AiProvider,
     resolveUserAiRuntimeSettings,
 } from "@/lib/services/userSettings";
+import {
+    AiGenerationError,
+    detectQuotaExceeded,
+    isAiGenerationError,
+} from "@/lib/services/aiErrors";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -67,7 +72,7 @@ async function generateWithGemini(
     apiKey: string,
     temperature: number,
     maxTokens: number
-): Promise<string | null> {
+): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
     const response = await fetch(url, {
         method: "POST",
@@ -86,13 +91,29 @@ async function generateWithGemini(
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => "");
-        console.error("Gemini API error:", errorText || response.statusText);
-        return null;
+        throw new AiGenerationError(
+            detectQuotaExceeded(response.status, errorText)
+                ? "QUOTA_EXCEEDED"
+                : "PROVIDER_ERROR",
+            "Gemini API request failed.",
+            {
+                provider: "gemini",
+                status: response.status,
+                details: errorText || response.statusText,
+            }
+        );
     }
 
     const data = (await response.json()) as GeminiResponse;
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-    return text || null;
+    if (!text) {
+        throw new AiGenerationError("NO_RESPONSE", "Gemini returned an empty response.", {
+            provider: "gemini",
+            status: response.status,
+        });
+    }
+
+    return text;
 }
 
 async function generateWithOpenAi(
@@ -100,7 +121,7 @@ async function generateWithOpenAi(
     apiKey: string,
     temperature: number,
     maxTokens: number
-): Promise<string | null> {
+): Promise<string> {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -117,14 +138,30 @@ async function generateWithOpenAi(
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => "");
-        console.error("OpenAI API error:", errorText || response.statusText);
-        return null;
+        throw new AiGenerationError(
+            detectQuotaExceeded(response.status, errorText)
+                ? "QUOTA_EXCEEDED"
+                : "PROVIDER_ERROR",
+            "OpenAI API request failed.",
+            {
+                provider: "openai",
+                status: response.status,
+                details: errorText || response.statusText,
+            }
+        );
     }
 
     const data = (await response.json()) as OpenAiResponse;
     const rawContent = data.choices?.[0]?.message?.content;
     const text = extractOpenAiContent(rawContent);
-    return text || null;
+    if (!text) {
+        throw new AiGenerationError("NO_RESPONSE", "OpenAI returned an empty response.", {
+            provider: "openai",
+            status: response.status,
+        });
+    }
+
+    return text;
 }
 
 async function generateWithAnthropic(
@@ -132,7 +169,7 @@ async function generateWithAnthropic(
     apiKey: string,
     temperature: number,
     maxTokens: number
-): Promise<string | null> {
+): Promise<string> {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -150,8 +187,17 @@ async function generateWithAnthropic(
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => "");
-        console.error("Anthropic API error:", errorText || response.statusText);
-        return null;
+        throw new AiGenerationError(
+            detectQuotaExceeded(response.status, errorText)
+                ? "QUOTA_EXCEEDED"
+                : "PROVIDER_ERROR",
+            "Anthropic API request failed.",
+            {
+                provider: "anthropic",
+                status: response.status,
+                details: errorText || response.statusText,
+            }
+        );
     }
 
     const data = (await response.json()) as AnthropicResponse;
@@ -159,7 +205,14 @@ async function generateWithAnthropic(
         (part) => part?.type === "text" && typeof part.text === "string"
     );
     const text = textPart?.text?.trim() || "";
-    return text || null;
+    if (!text) {
+        throw new AiGenerationError("NO_RESPONSE", "Anthropic returned an empty response.", {
+            provider: "anthropic",
+            status: response.status,
+        });
+    }
+
+    return text;
 }
 
 async function generateByProvider(
@@ -168,7 +221,7 @@ async function generateByProvider(
     apiKey: string,
     temperature: number,
     maxTokens: number
-): Promise<string | null> {
+): Promise<string> {
     if (provider === "gemini") {
         return generateWithGemini(prompt, apiKey, temperature, maxTokens);
     }
@@ -181,13 +234,18 @@ async function generateByProvider(
 export async function generateAiText(
     prompt: string,
     options: GenerateAiTextOptions = {}
-): Promise<string | null> {
+): Promise<string> {
     const normalizedPrompt = prompt.trim();
-    if (!normalizedPrompt) return null;
+    if (!normalizedPrompt) {
+        throw new AiGenerationError("NO_RESPONSE", "Prompt is empty.");
+    }
 
     const runtimeSettings = await resolveUserAiRuntimeSettings(options.userId);
     if (!runtimeSettings?.apiKey) {
-        return null;
+        throw new AiGenerationError(
+            "MISSING_API_KEY",
+            "No AI API key is configured for this account."
+        );
     }
 
     const temperature = normalizeTemperature(options.temperature);
@@ -202,10 +260,16 @@ export async function generateAiText(
             maxTokens
         );
     } catch (error) {
+        if (isAiGenerationError(error)) {
+            throw error;
+        }
+
         console.error(
             `AI generation failed for provider ${runtimeSettings.provider}:`,
             error
         );
-        return null;
+        throw new AiGenerationError("PROVIDER_ERROR", "AI provider request failed.", {
+            provider: runtimeSettings.provider,
+        });
     }
 }

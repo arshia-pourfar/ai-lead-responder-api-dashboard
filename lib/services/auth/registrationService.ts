@@ -1,8 +1,7 @@
-import crypto from "crypto";
 import { hash } from "bcryptjs";
 import prisma from "@/lib/prisma";
 import {
-    createAndSendVerificationCode,
+    createAndSendPendingVerificationCode,
     normalizeEmail,
 } from "@/lib/services/auth/emailVerificationService";
 
@@ -13,10 +12,6 @@ export class RegistrationError extends Error {
         super(message);
         this.code = code;
     }
-}
-
-function generateAccessCode() {
-    return crypto.randomBytes(8).toString("hex");
 }
 
 export async function registerUser({
@@ -31,32 +26,32 @@ export async function registerUser({
     const normalizedEmail = normalizeEmail(email);
     const trimmedName = name.trim();
 
-    const existingUser = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
+    const existingVerifiedUser = await prisma.user.findFirst({
+        where: {
+            email: normalizedEmail,
+            isVerified: true,
+        },
         select: { id: true },
     });
-    if (existingUser) {
+    if (existingVerifiedUser) {
         throw new RegistrationError("USER_EXISTS", "User already exists.");
     }
 
-    const hashedPassword = await hash(password, 10);
-
-    const user = await prisma.user.create({
-        data: {
-            name: trimmedName,
+    await prisma.user.deleteMany({
+        where: {
             email: normalizedEmail,
-            password: hashedPassword,
-            accessCode: generateAccessCode(),
             isVerified: false,
-        },
-        select: {
-            id: true,
-            email: true,
         },
     });
 
+    const hashedPassword = await hash(password, 10);
+
     try {
-        await createAndSendVerificationCode(user.id, user.email);
+        await createAndSendPendingVerificationCode({
+            name: trimmedName,
+            email: normalizedEmail,
+            passwordHash: hashedPassword,
+        });
     } catch (error) {
         if (
             error instanceof Error &&
@@ -75,5 +70,8 @@ export async function registerUser({
         );
     }
 
-    return user;
+    return {
+        email: normalizedEmail,
+    };
 }
+

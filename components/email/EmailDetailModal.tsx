@@ -7,6 +7,7 @@ export interface EmailModalData {
     subject: string;
     sender: string;
     body?: string;
+    bodyHtml?: string;
     aiReply?: string;
     manualReply?: string;
     createdAt?: string | Date | null;
@@ -21,11 +22,51 @@ interface EmailDetailModalProps {
     onSend?: (email: EmailModalData, replyText: string) => Promise<void> | void;
 }
 
+type BodyViewMode = "rendered" | "plain";
+
 function formatDate(value?: string | Date | null): string {
     if (!value) return "Unknown";
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return "Unknown";
     return date.toLocaleString();
+}
+
+function sanitizeEmailHtml(html: string): string {
+    const normalized = html.trim();
+    if (!normalized) return "";
+    if (typeof window === "undefined") return normalized;
+
+    const parser = new DOMParser();
+    const documentNode = parser.parseFromString(normalized, "text/html");
+
+    documentNode
+        .querySelectorAll(
+            "script,iframe,object,embed,form,input,button,textarea,select,link,meta,base"
+        )
+        .forEach((node) => node.remove());
+
+    const elements = Array.from(documentNode.querySelectorAll("*"));
+    for (const element of elements) {
+        const attributes = Array.from(element.attributes);
+        for (const attribute of attributes) {
+            const name = attribute.name.toLowerCase();
+            const value = attribute.value.trim().toLowerCase();
+            if (name.startsWith("on")) {
+                element.removeAttribute(attribute.name);
+                continue;
+            }
+            if ((name === "href" || name === "src") && value.startsWith("javascript:")) {
+                element.removeAttribute(attribute.name);
+            }
+        }
+
+        if (element.tagName.toLowerCase() === "a") {
+            element.setAttribute("target", "_blank");
+            element.setAttribute("rel", "noopener noreferrer nofollow");
+        }
+    }
+
+    return documentNode.body.innerHTML;
 }
 
 export default function EmailDetailModal({
@@ -39,18 +80,26 @@ export default function EmailDetailModal({
     const [saving, setSaving] = useState(false);
     const [sending, setSending] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
+    const [bodyViewMode, setBodyViewMode] = useState<BodyViewMode>("plain");
 
     useEffect(() => {
         if (!email) return;
         setIsEditing(false);
         setActionError(null);
         setDraftReply((email.manualReply || email.aiReply || "").trim());
+        setBodyViewMode((email.bodyHtml || "").trim() ? "rendered" : "plain");
     }, [email]);
 
     const displayConfidence = useMemo(() => {
         if (!email?.confidence && email?.confidence !== 0) return "N/A";
         return String(email.confidence).toUpperCase();
     }, [email]);
+
+    const sanitizedHtmlBody = useMemo(
+        () => sanitizeEmailHtml(email?.bodyHtml || ""),
+        [email?.bodyHtml]
+    );
+    const hasHtmlBody = sanitizedHtmlBody.trim().length > 0;
 
     if (!email) return null;
 
@@ -76,7 +125,9 @@ export default function EmailDetailModal({
             setIsEditing(false);
         } catch (error) {
             console.error(error);
-            setActionError("Failed to save email changes.");
+            setActionError(
+                error instanceof Error ? error.message : "Failed to save email changes."
+            );
         } finally {
             setSaving(false);
         }
@@ -95,17 +146,19 @@ export default function EmailDetailModal({
             await onSend(email, replyText);
         } catch (error) {
             console.error(error);
-            setActionError("Failed to send email.");
+            setActionError(error instanceof Error ? error.message : "Failed to send email.");
         } finally {
             setSending(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4">
-            <div className="flex max-h-[95dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-bg sm:max-h-[90vh]">
-                <div className="border-b border-border px-4 py-3 sm:px-6 sm:py-4">
-                    <h3 className="wrap-break-word text-base font-semibold sm:text-lg">{email.subject || "No Subject"}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
+            <div className="flex max-h-[95dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl sm:max-h-[92dvh]">
+                <div className="border-b border-border px-4 py-4 sm:px-6">
+                    <h3 className="wrap-break-word text-base font-semibold sm:text-lg">
+                        {email.subject || "No Subject"}
+                    </h3>
                     <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted">
                         <span>Sender: {email.sender || "unknown"}</span>
                         <span>Date: {formatDate(email.createdAt)}</span>
@@ -113,30 +166,66 @@ export default function EmailDetailModal({
                     </div>
                 </div>
 
-                <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
-                    <div className="border border-border rounded-lg p-3 bg-card/30">
-                        <p className="text-xs font-semibold text-muted mb-2">Email Body</p>
-                        <p className="text-sm text-text whitespace-pre-wrap wrap-break-word">
-                            {email.body || "No content"}
-                        </p>
+                <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="rounded-xl border border-border bg-card/40 p-3">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                                <p className="text-xs font-semibold text-muted">Message</p>
+                                {hasHtmlBody && (
+                                    <div className="flex items-center gap-1 rounded-md border border-border p-1">
+                                        <button
+                                            onClick={() => setBodyViewMode("rendered")}
+                                            className={`rounded px-2 py-1 text-xs ${
+                                                bodyViewMode === "rendered"
+                                                    ? "bg-primary/15 text-primary"
+                                                    : "text-muted"
+                                            }`}
+                                        >
+                                            Rendered
+                                        </button>
+                                        <button
+                                            onClick={() => setBodyViewMode("plain")}
+                                            className={`rounded px-2 py-1 text-xs ${
+                                                bodyViewMode === "plain"
+                                                    ? "bg-primary/15 text-primary"
+                                                    : "text-muted"
+                                            }`}
+                                        >
+                                            Plain
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {bodyViewMode === "rendered" && hasHtmlBody ? (
+                                <div
+                                    className="email-html-content max-h-[46dvh] overflow-auto rounded-lg border border-border bg-white p-3 text-sm text-black"
+                                    dangerouslySetInnerHTML={{ __html: sanitizedHtmlBody }}
+                                />
+                            ) : (
+                                <pre className="max-h-[46dvh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-bg/70 p-3 text-sm text-text">
+                                    {email.body || "No content"}
+                                </pre>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card/40 p-3">
+                            <p className="mb-3 text-xs font-semibold text-muted">Reply</p>
+                            {isEditing ? (
+                                <textarea
+                                    value={draftReply}
+                                    onChange={(event) => setDraftReply(event.target.value)}
+                                    className="h-[46dvh] w-full resize-none rounded-lg border border-border bg-bg/70 p-3 text-sm"
+                                />
+                            ) : (
+                                <pre className="h-[46dvh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-bg/70 p-3 text-sm text-text">
+                                    {replyText || "No AI reply available"}
+                                </pre>
+                            )}
+                        </div>
                     </div>
 
-                    <div className="border border-border rounded-lg p-3 bg-card/30">
-                        <p className="text-xs font-semibold text-muted mb-2">AI Generated Reply</p>
-                        {isEditing ? (
-                            <textarea
-                                value={draftReply}
-                                onChange={(event) => setDraftReply(event.target.value)}
-                                className="h-40 w-full resize-none rounded-md border border-border bg-bg/60 p-2 text-sm"
-                            />
-                        ) : (
-                            <p className="text-sm text-text whitespace-pre-wrap wrap-break-word">
-                                {replyText || "No AI reply available"}
-                            </p>
-                        )}
-                    </div>
-
-                    {actionError && <p className="text-xs text-danger">{actionError}</p>}
+                    {actionError && <p className="mt-3 text-xs text-danger">{actionError}</p>}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3 sm:px-6 sm:py-4">
@@ -165,3 +254,4 @@ export default function EmailDetailModal({
         </div>
     );
 }
+

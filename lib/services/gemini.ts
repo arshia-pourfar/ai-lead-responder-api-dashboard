@@ -1,5 +1,6 @@
 import { getUserAiSettings } from "@/lib/services/userSettings";
 import { generateAiText } from "@/lib/services/aiClient";
+import { AiGenerationError } from "@/lib/services/aiErrors";
 
 export async function analyzeLead(category: string, message: string, userId?: string) {
     let customPrompt = "";
@@ -31,9 +32,10 @@ Write a short, friendly, professional reply that encourages the customer to cont
         maxTokens: 350,
     });
 
-    if (!aiReply) {
-        return { reply: "Thanks for reaching out! We'll reply shortly." };
+    const normalizedReply = aiReply.trim();
+    if (!normalizedReply) {
+        throw new AiGenerationError("NO_RESPONSE", "No response received from AI.");
     }
 
-    return { reply: aiReply };
+    return { reply: normalizedReply };
 }

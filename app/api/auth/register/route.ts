@@ -21,7 +21,6 @@ export async function POST(req: NextRequest) {
         const user = await registerUser(parsed.data);
         return NextResponse.json(
             {
-                id: user.id,
                 email: user.email,
                 message: "Signup successful. Please verify your email with the code we sent.",
             },
