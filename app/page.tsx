@@ -34,7 +34,7 @@ export default function Dashboard() {
       url: string,
       fallback: T,
       timeoutMs = 12_000
-    ): Promise<{ data: T; ok: boolean; unauthorized: boolean }> => {
+    ): Promise<{ data: T; ok: boolean; unauthorized: boolean; reason?: string }> => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -46,31 +46,36 @@ export default function Dashboard() {
         });
 
         if (!res.ok) {
-          return { data: fallback, ok: false, unauthorized: res.status === 401 };
+          const payload = await res.json().catch(() => null);
+          const reason =
+            payload && typeof payload === "object" && "error" in payload
+              ? String((payload as { error?: string }).error || `HTTP ${res.status}`)
+              : `HTTP ${res.status}`;
+          return { data: fallback, ok: false, unauthorized: res.status === 401, reason };
         }
 
         return { data: (await res.json()) as T, ok: true, unauthorized: false };
-      } catch {
-        return { data: fallback, ok: false, unauthorized: false };
+      } catch (error) {
+        return {
+          data: fallback,
+          ok: false,
+          unauthorized: false,
+          reason: error instanceof Error ? error.message : "Request failed",
+        };
       } finally {
         clearTimeout(timeoutId);
       }
     };
 
     const fetchAll = async () => {
-      const coreSectionsPromise = Promise.all([
-        fetchJsonSafe<Email[]>("/api/ready-to-send", []),
-        fetchJsonSafe<Email[]>("/api/ready-to-sell", []),
-        fetchJsonSafe<Email[]>("/api/sent-emails", []),
-      ]);
-
-      const unreadPromise = fetchJsonSafe<{ emails?: Email[]; total?: number }>(
+      const readyResult = await fetchJsonSafe<Email[]>("/api/ready-to-send", []);
+      const sellResult = await fetchJsonSafe<Email[]>("/api/ready-to-sell", []);
+      const sentResult = await fetchJsonSafe<Email[]>("/api/sent-emails", []);
+      const unreadResult = await fetchJsonSafe<{ emails?: Email[]; total?: number; warning?: string }>(
         "/api/unread-emails?limit=12&offset=0",
         { emails: [] },
         10_000
       );
-
-      const [readyResult, sellResult, sentResult] = await coreSectionsPromise;
       if (cancelled) return;
 
       setReadyEmails(Array.isArray(readyResult.data) ? readyResult.data : []);
@@ -78,23 +83,20 @@ export default function Dashboard() {
       setSentEmails(Array.isArray(sentResult.data) ? sentResult.data : []);
 
       const failedCoreSections = [
-        readyResult.ok ? null : "ready",
-        sellResult.ok ? null : "sell",
-        sentResult.ok ? null : "sent",
-      ].filter(Boolean);
+        readyResult.ok ? null : `ready${readyResult.reason ? ` (${readyResult.reason})` : ""}`,
+        sellResult.ok ? null : `sell${sellResult.reason ? ` (${sellResult.reason})` : ""}`,
+        sentResult.ok ? null : `sent${sentResult.reason ? ` (${sentResult.reason})` : ""}`,
+      ].filter((value): value is string => Boolean(value));
 
       if (readyResult.unauthorized || sellResult.unauthorized || sentResult.unauthorized) {
         setError("Session expired. Please login again.");
       } else if (failedCoreSections.length > 0) {
-        setError("Could not load dashboard sections completely.");
+        setError(`Could not load dashboard sections completely: ${failedCoreSections.join(" | ")}`);
       } else {
         setError(null);
       }
 
       setLoading(false);
-
-      const unreadResult = await unreadPromise;
-      if (cancelled) return;
 
       setUnreadEmails(Array.isArray(unreadResult.data?.emails) ? unreadResult.data.emails : []);
 
@@ -102,8 +104,10 @@ export default function Dashboard() {
         setError((prev) => {
           if (prev) return prev;
           if (unreadResult.unauthorized) return "Session expired. Please login again.";
-          return "Unread emails are temporarily unavailable.";
+          return `Unread emails are temporarily unavailable${unreadResult.reason ? ` (${unreadResult.reason})` : ""}.`;
         });
+      } else if (typeof unreadResult.data?.warning === "string" && unreadResult.data.warning.trim()) {
+        setError((prev) => prev || unreadResult.data.warning || null);
       }
     };
 
@@ -198,6 +202,7 @@ export default function Dashboard() {
         subject: email.subject,
         sender: email.sender,
         body: email.body || "",
+        bodyHtml: email.bodyHtml || "",
         text: replyText,
       }),
     });
@@ -250,6 +255,7 @@ export default function Dashboard() {
           subject: readyEmail.subject,
           sender: readyEmail.sender,
           body: readyEmail.body,
+          bodyHtml: readyEmail.bodyHtml || "",
           manualReply: finalReply,
           sendNow: true,
         }),
@@ -273,6 +279,7 @@ export default function Dashboard() {
         subject: email.subject,
         sender: email.sender,
         body: email.body || "",
+        bodyHtml: email.bodyHtml || "",
         manualReply: replyText,
         sendNow: true,
       }),
@@ -381,6 +388,7 @@ function SectionCard({
             subject={email.subject || "No Subject"}
             sender={email.sender || "unknown"}
             body={email.body || "No content"}
+            bodyHtml={email.bodyHtml || ""}
             aiReply={email.aiReply || ""}
             manualReply={email.manualReply || ""}
             tag={email.tag ?? tag}

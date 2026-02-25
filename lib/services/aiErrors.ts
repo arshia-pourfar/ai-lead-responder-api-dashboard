@@ -34,9 +34,20 @@ const QUOTA_KEYWORDS = [
     "quota",
     "insufficient_quota",
     "resource_exhausted",
+    "resource exhausted",
     "daily limit",
-    "rate limit",
+    "daily quota",
+    "quota exceeded",
+    "limit exceeded",
+    "rate_limit_exceeded",
+    "rate limit exceeded",
+    "ratelimit",
+    "userratelimitexceeded",
+    "user rate limit exceeded",
+    "exceeded your current quota",
     "too many requests",
+    "out of quota",
+    "rate limit",
 ];
 
 export function detectQuotaExceeded(
@@ -45,7 +56,13 @@ export function detectQuotaExceeded(
 ): boolean {
     if (status === 429) return true;
 
-    const normalizedDetails = (details || "").toLowerCase();
+    const normalizedDetails = (details || "")
+        .toLowerCase()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!normalizedDetails) return false;
     return QUOTA_KEYWORDS.some((keyword) => normalizedDetails.includes(keyword));
 }
 
@@ -56,6 +73,12 @@ export function isAiGenerationError(error: unknown): error is AiGenerationError 
 export function getAiHttpStatus(error: unknown): number {
     if (!isAiGenerationError(error)) return 500;
     if (error.code === "QUOTA_EXCEEDED") return 429;
+    if (
+        error.code === "PROVIDER_ERROR" &&
+        detectQuotaExceeded(error.status || 0, error.details)
+    ) {
+        return 429;
+    }
     if (error.code === "MISSING_API_KEY") return 400;
     if (error.code === "NO_RESPONSE") return 502;
     return error.status && error.status >= 400 ? error.status : 502;
@@ -69,6 +92,12 @@ export function getAiUserMessage(error: unknown): string {
     if (error.code === "QUOTA_EXCEEDED") {
         return "Daily AI request limit has been reached.";
     }
+    if (
+        error.code === "PROVIDER_ERROR" &&
+        detectQuotaExceeded(error.status || 0, error.details)
+    ) {
+        return "Daily AI request limit has been reached.";
+    }
     if (error.code === "NO_RESPONSE") {
         return "No response received from AI. Email was not marked as read.";
     }
@@ -78,4 +107,3 @@ export function getAiUserMessage(error: unknown): string {
 
     return "AI provider error. Please try again.";
 }
-

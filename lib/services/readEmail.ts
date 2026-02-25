@@ -8,74 +8,6 @@ import {
 } from "@/lib/services/emailCredentials";
 dotenv.config();
 
-async function createConnectedImapWithRetries(imapConfig: ImapConfig, attempts = 3, baseDelay = 1000): Promise<ImapClient> {
-    let lastError: unknown = null;
-
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
-        const imap = new Imap(imapConfig) as ImapClient;
-
-        imapDiagnosticsLog("imap: attempting connect", { host: imapConfig.host, user: imapConfig.user, attempt });
-
-        const connected = await new Promise<ImapClient>((resolve, reject) => {
-            let settled = false;
-
-            const onReady = () => {
-                if (settled) return;
-                settled = true;
-                imap.removeListener("error", onError);
-                imap.removeListener("end", onEnd);
-                imap.removeListener("close", onClose);
-                imapDiagnosticsLog("imap: ready", { host: imapConfig.host, user: imapConfig.user });
-                resolve(imap);
-            };
-
-            const onError = (err: unknown) => {
-                if (settled) return;
-                settled = true;
-                imapDiagnosticsLog("imap: connect error", describeImapError(err));
-                reject(err);
-            };
-
-            const onEnd = () => {
-                if (settled) return;
-                settled = true;
-                imapDiagnosticsLog("imap: connection end", { host: imapConfig.host, user: imapConfig.user });
-                reject(new Error("IMAP connection ended before ready"));
-            };
-
-            const onClose = (hadError?: boolean) => {
-                if (settled) return;
-                settled = true;
-                imapDiagnosticsLog("imap: connection closed", { host: imapConfig.host, user: imapConfig.user, hadError: Boolean(hadError) });
-                reject(new Error("IMAP connection closed before ready"));
-            };
-
-            imap.once("ready", onReady);
-            imap.once("error", onError);
-            imap.once("end", onEnd);
-            imap.once("close", onClose);
-
-            try {
-                imap.connect();
-            } catch (err) {
-                onError(err);
-            }
-        }).catch((err) => {
-            lastError = err;
-            return null as unknown as ImapClient;
-        });
-
-        if (connected) return connected;
-
-        // exponential backoff before next attempt
-        const delay = baseDelay * Math.pow(2, attempt - 1);
-        imapDiagnosticsLog("imap: retry delay", { delay, attempt });
-        await new Promise((r) => setTimeout(r, delay));
-    }
-
-    throw lastError ?? new Error("Failed to connect to IMAP after retries");
-}
-
 const EMAIL_IMAP_DIAGNOSTICS =
     (process.env.EMAIL_IMAP_DIAGNOSTICS || "").toLowerCase() === "true";
 
@@ -152,10 +84,10 @@ function toImapConfig(credentials: ResolvedEmailCredentials): ImapConfig {
         // (note: type-checkers may not know these properties but Imap accepts them)
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        connTimeout: 15000,
+        connTimeout: 7000,
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        authTimeout: 20000,
+        authTimeout: 9000,
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         keepalive: { interval: 10000, idleInterval: 300000, forceNoop: true },
@@ -493,7 +425,7 @@ export async function readOneEmail(userId?: string): Promise<Email | null> {
                     }
                 });
 
-                imap.once("error", (err) => {
+                imap.once("error", (err: Error) => {
                     imapDiagnosticsLog("imap: error", describeImapError(err));
                     reject(err);
                 });
@@ -530,7 +462,7 @@ export async function markEmailAsSeenByUid(uid: number, userId?: string): Promis
                     }
                 });
 
-                imap.once("error", (err) => {
+                imap.once("error", (err: Error) => {
                     imapDiagnosticsLog("imap: error (markSeen)", describeImapError(err));
                     reject(err);
                 });
@@ -588,7 +520,7 @@ export async function readUnreadEmailsPaginated(
                     }
                 });
 
-                imap.once("error", (err) => {
+                imap.once("error", (err: Error) => {
                     imapDiagnosticsLog("imap: error (unread)", describeImapError(err));
                     reject(err);
                 });

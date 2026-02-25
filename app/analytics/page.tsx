@@ -23,6 +23,7 @@ interface SoldEmail {
     subject: string;
     sender: string;
     body?: string;
+    bodyHtml?: string;
     aiReply?: string;
     tag: "important";
     sellScore?: number;
@@ -198,6 +199,7 @@ export default function AnalysisPage() {
                                 subject={email.subject}
                                 sender={email.sender}
                                 body={email.body || "No body available"}
+                                bodyHtml={email.bodyHtml || ""}
                                 tag="important"
                                 onSelect={() => handleSelectEmail(email.id)}
                             />

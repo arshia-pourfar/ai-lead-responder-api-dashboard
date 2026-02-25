@@ -33,6 +33,7 @@ interface ApproveBody {
     ignore?: boolean;
     subject?: string;
     body?: string;
+    bodyHtml?: string;
     sender?: string;
     text?: string;
     category?: string;
@@ -43,18 +44,21 @@ interface ReadyEmailResponse {
     subject: string;
     sender: string;
     body: string;
+    bodyHtml?: string;
     aiReply: string;
     manualReply: string;
     tag: "ready";
 }
 
 const CACHE_TTL_MS = 5_000;
-const UNREAD_FETCH_TIMEOUT_MS = 50_000;
+const UNREAD_FETCH_TIMEOUT_MS = 12_000;
+const UNREAD_FETCH_FAILURE_COOLDOWN_MS = 30_000;
 const UNREAD_AUTOMATION_COOLDOWN_MS = 30_000;
 const UNREAD_AUTOMATION_BATCH_LIMIT = 20;
 const READY_AUTOSEND_COOLDOWN_MS = 30_000;
 const UNREAD_AUTOMATION_WARNING_TTL_MS = 60_000;
 const unreadCache = new Map<string, { expiresAt: number; payload: UnreadEmailsGetResponse }>();
+const unreadFetchCooldownByUser = new Map<string, { expiresAt: number; reason: string }>();
 const unreadAutomationInFlight = new Set<string>();
 const unreadAutomationLastRun = new Map<string, number>();
 const unreadAutomationWarnings = new Map<string, { message: string; expiresAt: number }>();
@@ -136,6 +140,40 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
                 reject(error);
             });
     });
+}
+
+function isUnreadFetchTimeoutError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const message = error.message.toLowerCase();
+    return (
+        message.includes("unread fetch timed out") ||
+        message.includes("timed out while connecting") ||
+        message.includes("imap") && message.includes("timed out") ||
+        message.includes("source: 'timeout'")
+    );
+}
+
+function setUnreadFetchCooldown(userId: string, reason: string): void {
+    unreadFetchCooldownByUser.set(userId, {
+        reason,
+        expiresAt: Date.now() + UNREAD_FETCH_FAILURE_COOLDOWN_MS,
+    });
+}
+
+function getUnreadFetchCooldownReason(userId: string): string | undefined {
+    const entry = unreadFetchCooldownByUser.get(userId);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+        unreadFetchCooldownByUser.delete(userId);
+        return undefined;
+    }
+    return entry.reason;
+}
+
+function mergeWarnings(...values: Array<string | undefined>): string | undefined {
+    const unique = Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+    if (unique.length === 0) return undefined;
+    return unique.join(" ");
 }
 
 function canRunUnreadAutomation(userId: string): boolean {
@@ -295,12 +333,28 @@ export async function GET(req: NextRequest) {
         const cached = unreadCache.get(cacheKey);
         if (cached && cached.expiresAt > now) {
             const cachedWarning = getUnreadAutomationWarning(String(user.id));
+            const fetchWarning = getUnreadFetchCooldownReason(String(user.id));
             return NextResponse.json<UnreadEmailsGetResponse>(
                 {
                     ...cached.payload,
-                    warning: cachedWarning || cached.payload.warning,
+                    warning: mergeWarnings(cachedWarning, fetchWarning, cached.payload.warning),
                 },
                 { status: 200 }
+            );
+        }
+
+        const fetchCooldownReason = getUnreadFetchCooldownReason(String(user.id));
+        if (fetchCooldownReason) {
+            return NextResponse.json<UnreadEmailsGetResponse>(
+                {
+                    emails: [],
+                    total: 0,
+                    warning: fetchCooldownReason,
+                },
+                {
+                    status: 200,
+                    headers: { "x-unread-source": "cooldown" },
+                }
             );
         }
 
@@ -314,6 +368,7 @@ export async function GET(req: NextRequest) {
             ),
             UNREAD_FETCH_TIMEOUT_MS
         );
+        unreadFetchCooldownByUser.delete(String(user.id));
 
         if (shouldAutoProcessUnread && unread.emails.length > 0) {
             runUnreadAutomationInBackground(
@@ -398,12 +453,22 @@ export async function GET(req: NextRequest) {
         const payload: UnreadEmailsGetResponse = {
             emails: formatted,
             total: totalFiltered,
-            warning: getUnreadAutomationWarning(String(user.id)),
+            warning: mergeWarnings(
+                getUnreadAutomationWarning(String(user.id)),
+                getUnreadFetchCooldownReason(String(user.id))
+            ),
         };
         unreadCache.set(cacheKey, { expiresAt: now + CACHE_TTL_MS, payload });
 
         return NextResponse.json<UnreadEmailsGetResponse>(payload, { status: 200 });
     } catch (err) {
+        const userId = String(user.id);
+        if (isUnreadFetchTimeoutError(err)) {
+            setUnreadFetchCooldown(
+                userId,
+                "Unread email fetch timed out. Check Email Settings credentials; retrying shortly."
+            );
+        }
         console.error("UNREAD EMAILS ERROR:", err);
 
         const limitParam = req.nextUrl.searchParams.get("limit") ?? "50";
@@ -417,10 +482,11 @@ export async function GET(req: NextRequest) {
 
         if (stale) {
             const staleWarning = getUnreadAutomationWarning(String(user.id));
+            const fetchWarning = getUnreadFetchCooldownReason(String(user.id));
             return NextResponse.json<UnreadEmailsGetResponse>(
                 {
                     ...stale.payload,
-                    warning: staleWarning || stale.payload.warning,
+                    warning: mergeWarnings(staleWarning, fetchWarning, stale.payload.warning),
                 },
                 {
                     status: 200,
@@ -431,7 +497,10 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        const fallbackWarning = getUnreadAutomationWarning(String(user.id));
+        const fallbackWarning = mergeWarnings(
+            getUnreadAutomationWarning(String(user.id)),
+            getUnreadFetchCooldownReason(String(user.id))
+        );
         return NextResponse.json<UnreadEmailsGetResponse>(
             { emails: [], total: 0, warning: fallbackWarning },
             { status: 200 }
@@ -487,6 +556,7 @@ export async function POST(req: NextRequest) {
         const emailData = {
             subject: body.subject,
             body: body.body ?? "",
+            bodyHtml: body.bodyHtml ?? "",
             aiReply: finalReply,
             manualReply: finalReply,
             category: detectedCategory,
@@ -507,6 +577,7 @@ export async function POST(req: NextRequest) {
             subject: email.subject,
             sender: email.senderEmail ?? "unknown",
             body: email.body,
+            bodyHtml: email.bodyHtml ?? "",
             aiReply: email.aiReply ?? "",
             manualReply: email.manualReply ?? "",
             tag: "ready",

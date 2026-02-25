@@ -183,15 +183,16 @@ export default function ReadyToSellPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({
-                emailId: email.id,
-                subject: email.subject,
-                sender: email.sender,
-                body: email.body || "",
-                manualReply: replyText,
-                sendNow: true,
-            }),
-        });
+                body: JSON.stringify({
+                    emailId: email.id,
+                    subject: email.subject,
+                    sender: email.sender,
+                    body: email.body || "",
+                    bodyHtml: email.bodyHtml || "",
+                    manualReply: replyText,
+                    sendNow: true,
+                }),
+            });
         const data = await res.json().catch(() => null);
         if (!res.ok) {
             throw new Error(data?.error || "Send failed");
@@ -250,6 +251,7 @@ export default function ReadyToSellPage() {
                         subject={email.subject || "No Subject"}
                         sender={email.sender || "unknown"}
                         body={email.body || ""}
+                        bodyHtml={email.bodyHtml || ""}
                         aiReply={email.aiReply || ""}
                         manualReply={email.manualReply || ""}
                         tag="important"

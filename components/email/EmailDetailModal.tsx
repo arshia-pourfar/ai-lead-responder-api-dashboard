@@ -69,6 +69,10 @@ function sanitizeEmailHtml(html: string): string {
     return documentNode.body.innerHTML;
 }
 
+function looksLikeHtml(value: string): boolean {
+    return /<\/?[a-z][\s\S]*>/i.test(value);
+}
+
 type TabType = "message" | "reply";
 
 export default function EmailDetailModal({
@@ -85,13 +89,21 @@ export default function EmailDetailModal({
     const [actionError, setActionError] = useState<string | null>(null);
     const [bodyViewMode, setBodyViewMode] = useState<BodyViewMode>("plain");
 
+    const htmlCandidate = useMemo(() => {
+        const explicitHtml = (email?.bodyHtml || "").trim();
+        if (explicitHtml) return explicitHtml;
+
+        const bodyValue = email?.body || "";
+        return looksLikeHtml(bodyValue) ? bodyValue : "";
+    }, [email?.body, email?.bodyHtml]);
+
     useEffect(() => {
         if (!email) return;
         setIsEditing(false);
         setActionError(null);
         setDraftReply((email.manualReply || email.aiReply || "").trim());
-        setBodyViewMode((email.bodyHtml || "").trim() ? "rendered" : "plain");
-    }, [email]);
+        setBodyViewMode(htmlCandidate ? "rendered" : "plain");
+    }, [email, htmlCandidate]);
 
     const displayConfidence = useMemo(() => {
         if (!email?.confidence && email?.confidence !== 0) return "N/A";
@@ -99,8 +111,8 @@ export default function EmailDetailModal({
     }, [email]);
 
     const sanitizedHtmlBody = useMemo(
-        () => sanitizeEmailHtml(email?.bodyHtml || ""),
-        [email?.bodyHtml]
+        () => sanitizeEmailHtml(htmlCandidate),
+        [htmlCandidate]
     );
     const hasHtmlBody = sanitizedHtmlBody.trim().length > 0;
 
@@ -285,4 +297,3 @@ export default function EmailDetailModal({
         </div>
     );
 }
-

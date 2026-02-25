@@ -8,6 +8,10 @@ import {
     detectQuotaExceeded,
     isAiGenerationError,
 } from "@/lib/services/aiErrors";
+import {
+    activateAiQuotaCooldown,
+    getAiQuotaCooldownState,
+} from "@/lib/services/aiQuotaCooldown";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -250,6 +254,19 @@ export async function generateAiText(
 
     const temperature = normalizeTemperature(options.temperature);
     const maxTokens = normalizeMaxTokens(options.maxTokens, 400);
+    const quotaScopeUserId =
+        runtimeSettings.source === "user" ? options.userId : undefined;
+    const activeQuotaCooldown = getAiQuotaCooldownState(
+        runtimeSettings.provider,
+        quotaScopeUserId
+    );
+    if (activeQuotaCooldown) {
+        throw new AiGenerationError("QUOTA_EXCEEDED", "AI quota cooldown is active.", {
+            provider: runtimeSettings.provider,
+            status: 429,
+            details: activeQuotaCooldown.reason,
+        });
+    }
 
     try {
         return await generateByProvider(
@@ -261,6 +278,25 @@ export async function generateAiText(
         );
     } catch (error) {
         if (isAiGenerationError(error)) {
+            if (
+                error.code === "QUOTA_EXCEEDED" ||
+                detectQuotaExceeded(error.status || 0, error.details)
+            ) {
+                activateAiQuotaCooldown({
+                    provider: runtimeSettings.provider,
+                    userId: quotaScopeUserId,
+                    status: error.status,
+                    details: error.details || error.message,
+                });
+
+                if (error.code !== "QUOTA_EXCEEDED") {
+                    throw new AiGenerationError("QUOTA_EXCEEDED", error.message, {
+                        provider: runtimeSettings.provider,
+                        status: error.status,
+                        details: error.details,
+                    });
+                }
+            }
             throw error;
         }
 

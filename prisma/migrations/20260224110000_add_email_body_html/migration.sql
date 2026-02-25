@@ -1,0 +1,2 @@
+ALTER TABLE "Email"
+ADD COLUMN IF NOT EXISTS "bodyHtml" TEXT;

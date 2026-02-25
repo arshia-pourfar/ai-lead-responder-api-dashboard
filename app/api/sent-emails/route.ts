@@ -149,6 +149,7 @@ function mapEmailResponse(email: {
     subject: string;
     senderEmail: string | null;
     body: string;
+    bodyHtml: string | null;
     aiReply: string | null;
     manualReply: string | null;
     category: string;
@@ -160,6 +161,7 @@ function mapEmailResponse(email: {
     subject: string;
     sender: string;
     body: string;
+    bodyHtml: string | null;
     aiReply: string | null;
     manualReply: string | null;
     confidence: "high" | "medium" | "low";
@@ -172,6 +174,7 @@ function mapEmailResponse(email: {
         subject: email.subject,
         sender: email.senderEmail ?? "unknown",
         body: email.body,
+        bodyHtml: email.bodyHtml,
         aiReply: email.aiReply,
         manualReply: email.manualReply,
         confidence: getConfidenceLabel(getConfidenceRank(email)),

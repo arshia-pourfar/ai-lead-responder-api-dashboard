@@ -4,7 +4,11 @@ import { sendAutoReplyDetailed } from "@/lib/services/email";
 import { analyzeLead } from "@/lib/services/gemini";
 import { getUserAutomationSettings } from "@/lib/services/userSettings";
 import { markEmailAsSeenByUid } from "@/lib/services/readEmail";
-import { AiGenerationError, getAiUserMessage } from "@/lib/services/aiErrors";
+import {
+    AiGenerationError,
+    detectQuotaExceeded,
+    getAiUserMessage,
+} from "@/lib/services/aiErrors";
 import {
     isDatabaseUnavailableNow,
     markDatabaseUnavailable,
@@ -284,7 +288,14 @@ export async function autoPrepareUnreadEmails(
 
             if (error instanceof AiGenerationError) {
                 result.errors.push(`Skipped uid ${uid}: ${getAiUserMessage(error)}`);
-                if (error.code === "QUOTA_EXCEEDED" || error.code === "NO_RESPONSE") {
+                const shouldPauseForQuotaLikeProviderError =
+                    error.code === "PROVIDER_ERROR" &&
+                    detectQuotaExceeded(error.status || 0, error.details);
+                if (
+                    error.code === "QUOTA_EXCEEDED" ||
+                    error.code === "NO_RESPONSE" ||
+                    shouldPauseForQuotaLikeProviderError
+                ) {
                     stopProcessing = true;
                 }
                 continue;

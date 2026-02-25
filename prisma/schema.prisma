@@ -52,6 +52,7 @@ model Email {
   id          String        @id @default(uuid())
   subject     String
   body        String
+  bodyHtml    String?
   aiReply     String?
   manualReply String?
   category    String        @default("general")

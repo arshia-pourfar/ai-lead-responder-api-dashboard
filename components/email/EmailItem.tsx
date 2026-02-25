@@ -11,6 +11,7 @@ interface EmailProps {
     sender: string;
     manualReply?: string;
     body: string;
+    bodyHtml?: string;
     aiReply?: string;
     tag: TagType;
     onSelect?: () => void;
@@ -21,6 +22,7 @@ interface EmailProps {
         subject: string;
         sender: string;
         body: string;
+        bodyHtml?: string;
         aiReply: string;
         manualReply: string;
         tag: "ready";
@@ -32,6 +34,7 @@ export default function EmailItem({
     subject,
     sender,
     body,
+    bodyHtml,
     manualReply,
     aiReply,
     tag,
@@ -116,6 +119,7 @@ export default function EmailItem({
                     subject,
                     sender,
                     body,
+                    bodyHtml: bodyHtml || "",
                     text: finalText,
                 }),
             });

@@ -27,6 +27,7 @@ interface ReadyEmailResponse {
     subject: string;
     sender: string;
     body: string;
+    bodyHtml?: string;
     aiReply: string;
     manualReply: string;
     tag: "ready";
@@ -189,6 +190,7 @@ export default function UnreadEmailsPage() {
                 subject: email.subject,
                 sender: email.sender,
                 body: email.body || "",
+                bodyHtml: email.bodyHtml || "",
                 text: replyText,
             }),
         });
@@ -283,6 +285,7 @@ export default function UnreadEmailsPage() {
                         subject={email.subject || "No Subject"}
                         sender={email.sender || "unknown"}
                         body={email.body || ""}
+                        bodyHtml={email.bodyHtml || ""}
                         aiReply={email.aiReply || ""}
                         manualReply={email.manualReply || ""}
                         tag="unread"

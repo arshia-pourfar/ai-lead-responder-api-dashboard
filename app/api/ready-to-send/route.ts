@@ -156,6 +156,7 @@ function mapEmailResponse(email: {
     id: string;
     subject: string;
     body: string;
+    bodyHtml: string | null;
     aiReply: string | null;
     manualReply: string | null;
     senderEmail: string | null;
@@ -166,6 +167,7 @@ function mapEmailResponse(email: {
     id: string;
     subject: string;
     body: string;
+    bodyHtml: string | null;
     aiReply: string | null;
     manualReply: string | null;
     sender: string;
@@ -178,6 +180,7 @@ function mapEmailResponse(email: {
         id: email.id,
         subject: email.subject,
         body: email.body,
+        bodyHtml: email.bodyHtml,
         aiReply: email.aiReply,
         manualReply: email.manualReply,
         sender: email.senderEmail ?? "unknown",
@@ -192,6 +195,7 @@ interface ReadyToSendBody {
     emailId?: string;
     subject?: string;
     body?: string;
+    bodyHtml?: string;
     sender?: string;
     manualReply?: string;
     aiReply?: string;
@@ -426,6 +430,10 @@ export async function POST(req: NextRequest) {
                 data: {
                     subject,
                     body: body.body ?? existingEmail.body,
+                    bodyHtml:
+                        body.bodyHtml !== undefined
+                            ? body.bodyHtml
+                            : existingEmail.bodyHtml ?? "",
                     senderEmail: sender,
                     aiReply: body.aiReply ?? existingEmail.aiReply ?? finalReply,
                     manualReply: body.manualReply ?? existingEmail.manualReply ?? finalReply,
@@ -449,6 +457,7 @@ export async function POST(req: NextRequest) {
             data: {
                 subject,
                 body: body.body ?? "",
+                bodyHtml: body.bodyHtml ?? "",
                 senderEmail: sender,
                 aiReply: body.aiReply ?? finalReply,
                 manualReply: body.manualReply ?? finalReply,

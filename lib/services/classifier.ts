@@ -1,6 +1,9 @@
 import { buildClassifierCategories, getUserAiSettings } from "@/lib/services/userSettings";
 import { generateAiText } from "@/lib/services/aiClient";
+import { isAiGenerationError } from "@/lib/services/aiErrors";
 const FALLBACK_CATEGORY = "general";
+const QUOTA_WARNING_COOLDOWN_MS = 60_000;
+const quotaWarningLastLogByScope = new Map<string, number>();
 
 export type EmailCategory = string;
 
@@ -19,6 +22,17 @@ function normalizeCategoryWithFallback(
         return category as EmailCategory;
     }
     return fallbackCategory;
+}
+
+function shouldLogQuotaWarning(userId?: string): boolean {
+    const scope = (userId || "").trim() || "global";
+    const now = Date.now();
+    const lastLoggedAt = quotaWarningLastLogByScope.get(scope) ?? 0;
+    if (now - lastLoggedAt < QUOTA_WARNING_COOLDOWN_MS) {
+        return false;
+    }
+    quotaWarningLastLogByScope.set(scope, now);
+    return true;
 }
 
 export async function detectCategory(message: string, userId?: string): Promise<EmailCategory> {
@@ -64,8 +78,16 @@ export async function detectCategory(message: string, userId?: string): Promise<
             maxTokens: 50,
         });
     } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        console.warn(`Category detection fell back to default category: ${reason}`);
+        if (isAiGenerationError(error) && error.code === "QUOTA_EXCEEDED") {
+            if (shouldLogQuotaWarning(userId)) {
+                console.warn(
+                    "Category detection fell back to default category: Daily AI request limit has been reached."
+                );
+            }
+        } else {
+            const reason = error instanceof Error ? error.message : String(error);
+            console.warn(`Category detection fell back to default category: ${reason}`);
+        }
         rawCategory = null;
     }
 
