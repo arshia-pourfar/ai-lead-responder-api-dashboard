@@ -8,6 +8,7 @@ const prisma =
     globalForPrisma.prisma ??
     new PrismaClient({
         log: (process.env.PRISMA_ERROR_LOGS || "").toLowerCase() === "true" ? ["error"] : [],
+        errorFormat: "pretty",
     });
 
 if (process.env.NODE_ENV !== "production") {

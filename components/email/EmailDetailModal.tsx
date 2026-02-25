@@ -69,12 +69,15 @@ function sanitizeEmailHtml(html: string): string {
     return documentNode.body.innerHTML;
 }
 
+type TabType = "message" | "reply";
+
 export default function EmailDetailModal({
     email,
     onClose,
     onEdit,
     onSend,
 }: EmailDetailModalProps) {
+    const [activeTab, setActiveTab] = useState<TabType>("message");
     const [isEditing, setIsEditing] = useState(false);
     const [draftReply, setDraftReply] = useState("");
     const [saving, setSaving] = useState(false);
@@ -166,8 +169,33 @@ export default function EmailDetailModal({
                     </div>
                 </div>
 
+                <div className="border-b border-border px-4 sm:px-6">
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setActiveTab("message")}
+                            title="View incoming message"
+                            className={`border-b-2 px-4 py-3 text-sm font-medium transition ${activeTab === "message"
+                                    ? "border-primary text-primary"
+                                    : "border-transparent text-muted hover:text-text"
+                                }`}
+                        >
+                            Message
+                        </button>
+                        <button
+                            onClick={() => setActiveTab("reply")}
+                            title="View and edit reply"
+                            className={`border-b-2 px-4 py-3 text-sm font-medium transition ${activeTab === "reply"
+                                    ? "border-primary text-primary"
+                                    : "border-transparent text-muted hover:text-text"
+                                }`}
+                        >
+                            Reply
+                        </button>
+                    </div>
+                </div>
+
                 <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-                    <div className="grid gap-4 lg:grid-cols-2">
+                    {activeTab === "message" && (
                         <div className="rounded-xl border border-border bg-card/40 p-3">
                             <div className="mb-3 flex items-center justify-between gap-2">
                                 <p className="text-xs font-semibold text-muted">Message</p>
@@ -175,21 +203,21 @@ export default function EmailDetailModal({
                                     <div className="flex items-center gap-1 rounded-md border border-border p-1">
                                         <button
                                             onClick={() => setBodyViewMode("rendered")}
-                                            className={`rounded px-2 py-1 text-xs ${
-                                                bodyViewMode === "rendered"
+                                            title="View rendered email"
+                                            className={`rounded px-2 py-1 text-xs ${bodyViewMode === "rendered"
                                                     ? "bg-primary/15 text-primary"
                                                     : "text-muted"
-                                            }`}
+                                                }`}
                                         >
                                             Rendered
                                         </button>
                                         <button
                                             onClick={() => setBodyViewMode("plain")}
-                                            className={`rounded px-2 py-1 text-xs ${
-                                                bodyViewMode === "plain"
+                                            title="View plain text email"
+                                            className={`rounded px-2 py-1 text-xs ${bodyViewMode === "plain"
                                                     ? "bg-primary/15 text-primary"
                                                     : "text-muted"
-                                            }`}
+                                                }`}
                                         >
                                             Plain
                                         </button>
@@ -199,31 +227,34 @@ export default function EmailDetailModal({
 
                             {bodyViewMode === "rendered" && hasHtmlBody ? (
                                 <div
-                                    className="email-html-content max-h-[46dvh] overflow-auto rounded-lg border border-border bg-white p-3 text-sm text-black"
+                                    className="email-html-content max-h-[65dvh] overflow-auto rounded-lg border border-border bg-white p-3 text-sm text-black"
                                     dangerouslySetInnerHTML={{ __html: sanitizedHtmlBody }}
                                 />
                             ) : (
-                                <pre className="max-h-[46dvh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-bg/70 p-3 text-sm text-text">
+                                <pre className="max-h-[65dvh] overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg border border-border bg-bg/70 p-3 text-sm text-text">
                                     {email.body || "No content"}
                                 </pre>
                             )}
                         </div>
+                    )}
 
+                    {activeTab === "reply" && (
                         <div className="rounded-xl border border-border bg-card/40 p-3">
                             <p className="mb-3 text-xs font-semibold text-muted">Reply</p>
                             {isEditing ? (
                                 <textarea
                                     value={draftReply}
                                     onChange={(event) => setDraftReply(event.target.value)}
-                                    className="h-[46dvh] w-full resize-none rounded-lg border border-border bg-bg/70 p-3 text-sm"
+                                    placeholder="Type your reply message here..."
+                                    className="min-h-[65dvh] w-full resize-none rounded-lg border border-border bg-bg/70 p-3 text-sm"
                                 />
                             ) : (
-                                <pre className="h-[46dvh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-bg/70 p-3 text-sm text-text">
+                                <pre className="min-h-[65dvh] overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg border border-border bg-bg/70 p-3 text-sm text-text">
                                     {replyText || "No AI reply available"}
                                 </pre>
                             )}
                         </div>
-                    </div>
+                    )}
 
                     {actionError && <p className="mt-3 text-xs text-danger">{actionError}</p>}
                 </div>

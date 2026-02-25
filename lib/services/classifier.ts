@@ -64,7 +64,8 @@ export async function detectCategory(message: string, userId?: string): Promise<
             maxTokens: 50,
         });
     } catch (error) {
-        console.warn("Category detection fell back to default category:", error);
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(`Category detection fell back to default category: ${reason}`);
         rawCategory = null;
     }
 

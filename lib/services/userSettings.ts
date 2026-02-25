@@ -451,52 +451,55 @@ export async function saveUserAiSettings(
     const customCategories = sanitizeCustomCategories(input.customCategories);
     const aiProviderSettingsInput = normalizeAiProviderSettingsInput(input.aiProviderSettings);
 
-    await prisma.$transaction(async (tx) => {
-        const existingRows = await tx.prompt.findMany({
-            where: {
-                userId,
-                title: { in: [CUSTOM_AI_PROVIDER_TITLE, CUSTOM_AI_API_KEY_ENCRYPTED_TITLE] },
-            },
-            select: { id: true, title: true, content: true },
-        });
-        const existingConfig = getStoredAiProviderConfig(existingRows);
-
-        await writePromptValue(tx, userId, CUSTOM_PROMPT_TITLE, customPrompt);
-
-        await tx.category.deleteMany({ where: { userId } });
-        if (customCategories.length > 0) {
-            await tx.category.createMany({
-                data: customCategories.map((name) => ({ name, userId })),
-            });
-        }
-
-        if (!aiProviderSettingsInput) {
-            return;
-        }
-
-        if (aiProviderSettingsInput.useDefaultProvider) {
-            await tx.prompt.deleteMany({
+    await prisma.$transaction(
+        async (tx) => {
+            const existingRows = await tx.prompt.findMany({
                 where: {
                     userId,
                     title: { in: [CUSTOM_AI_PROVIDER_TITLE, CUSTOM_AI_API_KEY_ENCRYPTED_TITLE] },
                 },
+                select: { id: true, title: true, content: true },
             });
-            return;
-        }
+            const existingConfig = getStoredAiProviderConfig(existingRows);
 
-        const changingProvider = !existingConfig.provider || existingConfig.provider !== aiProviderSettingsInput.provider;
-        const existingEncryptedKey = existingConfig.encryptedApiKey || "";
-        const nextEncryptedKey = aiProviderSettingsInput.apiKey
-            ? encryptSecret(aiProviderSettingsInput.apiKey)
-            : existingEncryptedKey;
+            await writePromptValue(tx, userId, CUSTOM_PROMPT_TITLE, customPrompt);
 
-        if (!nextEncryptedKey || (changingProvider && !aiProviderSettingsInput.apiKey)) {
-            throw new Error("API key is required when selecting or changing AI provider");
-        }
+            await tx.category.deleteMany({ where: { userId } });
+            if (customCategories.length > 0) {
+                await tx.category.createMany({
+                    data: customCategories.map((name) => ({ name, userId })),
+                });
+            }
 
-        await writePromptValue(tx, userId, CUSTOM_AI_PROVIDER_TITLE, aiProviderSettingsInput.provider);
-        await writePromptValue(tx, userId, CUSTOM_AI_API_KEY_ENCRYPTED_TITLE, nextEncryptedKey);
-    });
+            if (!aiProviderSettingsInput) {
+                return;
+            }
+
+            if (aiProviderSettingsInput.useDefaultProvider) {
+                await tx.prompt.deleteMany({
+                    where: {
+                        userId,
+                        title: { in: [CUSTOM_AI_PROVIDER_TITLE, CUSTOM_AI_API_KEY_ENCRYPTED_TITLE] },
+                    },
+                });
+                return;
+            }
+
+            const changingProvider = !existingConfig.provider || existingConfig.provider !== aiProviderSettingsInput.provider;
+            const existingEncryptedKey = existingConfig.encryptedApiKey || "";
+            const nextEncryptedKey = aiProviderSettingsInput.apiKey
+                ? encryptSecret(aiProviderSettingsInput.apiKey)
+                : existingEncryptedKey;
+
+            if (!nextEncryptedKey || (changingProvider && !aiProviderSettingsInput.apiKey)) {
+                throw new Error("API key is required when selecting or changing AI provider");
+            }
+
+            await writePromptValue(tx, userId, CUSTOM_AI_PROVIDER_TITLE, aiProviderSettingsInput.provider);
+            await writePromptValue(tx, userId, CUSTOM_AI_API_KEY_ENCRYPTED_TITLE, nextEncryptedKey);
+        },
+        { timeout: 60000 }
+    );
 
     return getUserAiSettings(userId);
 }
@@ -508,20 +511,23 @@ export async function saveUserAutomationSettings(
     const autoApproveUnread = input.autoApproveUnread === true;
     const autoSendReadyEmails = input.autoSendReadyEmails === true;
 
-    await prisma.$transaction(async (tx) => {
-        await writePromptValue(
-            tx,
-            userId,
-            AUTO_APPROVE_UNREAD_TITLE,
-            autoApproveUnread ? "1" : ""
-        );
-        await writePromptValue(
-            tx,
-            userId,
-            AUTO_SEND_READY_EMAILS_TITLE,
-            autoSendReadyEmails ? "1" : ""
-        );
-    });
+    await prisma.$transaction(
+        async (tx) => {
+            await writePromptValue(
+                tx,
+                userId,
+                AUTO_APPROVE_UNREAD_TITLE,
+                autoApproveUnread ? "1" : ""
+            );
+            await writePromptValue(
+                tx,
+                userId,
+                AUTO_SEND_READY_EMAILS_TITLE,
+                autoSendReadyEmails ? "1" : ""
+            );
+        },
+        { timeout: 60000 }
+    );
 
     return getUserAutomationSettings(userId);
 }

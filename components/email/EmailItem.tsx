@@ -219,6 +219,7 @@ export default function EmailItem({
                 <div className="flex flex-wrap gap-1 self-end sm:self-auto">
                     <button
                         onClick={onSelect}
+                        title="View email details"
                         className="rounded-md border border-border p-1.5 text-muted hover:border-primary"
                     >
                         <Eye size={14} />
@@ -228,6 +229,7 @@ export default function EmailItem({
                         <button
                             onClick={handleApproveModel}
                             disabled={approving}
+                            title="Approve email"
                             className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
                         >
                             <Check size={14} />
@@ -239,6 +241,7 @@ export default function EmailItem({
                             {!isEditing ? (
                                 <button
                                     onClick={() => setIsEditing(true)}
+                                    title="Edit reply"
                                     className="rounded-md border border-accent p-1.5 text-accent hover:bg-accent/10"
                                 >
                                     <Pencil size={14} />
@@ -247,6 +250,7 @@ export default function EmailItem({
                                 <button
                                     onClick={handleSaveEdit}
                                     disabled={savingEdit}
+                                    title="Save changes"
                                     className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
                                 >
                                     <Check size={14} />
@@ -256,6 +260,7 @@ export default function EmailItem({
                             <button
                                 onClick={handleFinalConfirm}
                                 disabled={sending}
+                                title="Send email"
                                 className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
                             >
                                 <Check size={14} />
@@ -286,6 +291,7 @@ export default function EmailItem({
                 <textarea
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
+                    placeholder="Edit reply message..."
                     className="mt-2 p-2 border border-border rounded-md text-sm h-24 resize-none bg-bg/50"
                 />
             )}

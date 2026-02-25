@@ -67,7 +67,7 @@ export default function Dashboard() {
       const unreadPromise = fetchJsonSafe<{ emails?: Email[]; total?: number }>(
         "/api/unread-emails?limit=12&offset=0",
         { emails: [] },
-        8_000
+        10_000
       );
 
       const [readyResult, sellResult, sentResult] = await coreSectionsPromise;

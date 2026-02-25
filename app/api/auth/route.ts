@@ -32,6 +32,14 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: err.message }, { status: 400 });
             }
 
+            if (err.code === "DB_MIGRATION_REQUIRED") {
+                return NextResponse.json({ error: err.message }, { status: 500 });
+            }
+
+            if (err.code === "DB_UNAVAILABLE") {
+                return NextResponse.json({ error: err.message }, { status: 503 });
+            }
+
             if (err.code === "EMAIL_SEND_FAILED") {
                 return NextResponse.json({ error: err.message }, { status: 500 });
             }
