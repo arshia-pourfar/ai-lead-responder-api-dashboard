@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
-import PageHeader from "@/components/ui/Header";
+import { Plus, X, Mail, Shield, Sparkles, Tag, FileText, Save, Check, AlertCircle } from "lucide-react";
+import SuperLoading from "@/components/ui/SuperLoading";
 
 type AiProvider = "gemini" | "openai" | "anthropic";
 
@@ -220,7 +220,7 @@ export default function SettingsPage() {
             );
             setHasSavedAppPassword(Boolean(payload.emailSettings?.hasAppPassword));
             setEmailAppPassword("");
-            setStatus("Settings saved.");
+            setStatus("Settings saved successfully.");
         } catch (error) {
             console.error("Failed to save settings:", error);
             const message =
@@ -275,201 +275,298 @@ export default function SettingsPage() {
         }
     };
 
+    if (loading) return <SuperLoading variant="list" label="Loading settings" />;
+
     return (
-        <div className="flex h-full min-w-0 flex-col gap-2 overflow-auto">
-            <PageHeader
-                title="Settings"
-                subtitle="Configure AI Email Assistant"
-            />
-
-            <div className="border border-border rounded-xl p-4 flex flex-col gap-5">
-                <div className="flex flex-col gap-2 text-sm">
-                    <label className="font-medium">Email Settings</label>
-
-                    <input
-                        type="email"
-                        value={emailAddress}
-                        onChange={(event) => setEmailAddress(event.target.value)}
-                        placeholder="example@gmail.com"
-                        className="border border-border rounded-md px-3 py-2 outline-none text-sm"
-                    />
-
-                    <input
-                        type="password"
-                        value={emailAppPassword}
-                        onChange={(event) => setEmailAppPassword(event.target.value)}
-                        placeholder={
-                            hasSavedAppPassword
-                                ? "****************"
-                                : "Enter email password or app password"
-                        }
-                        className="border border-border rounded-md px-3 py-2 outline-none text-sm"
-                        autoComplete="new-password"
-                    />
-                    <p className="text-xs text-muted">
-                        This password is encrypted at rest. Leave blank only if you already saved one.
-                    </p>
+        <div className="flex h-full min-w-0 flex-col gap-4 overflow-auto">
+            {/* Header */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-text">Settings</h1>
+                    <p className="mt-1 text-sm text-muted">Configure your AI Email Assistant</p>
                 </div>
+                <button
+                    type="button"
+                    disabled={saving || loading}
+                    onClick={saveSettings}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
+                >
+                    <Save size={16} />
+                    {saving ? "Saving..." : "Save Settings"}
+                </button>
+            </div>
 
-                <div className="flex flex-col gap-2 text-sm">
-                    <label className="font-medium">Automation Settings</label>
-                    <label className="flex items-start gap-2 text-xs text-muted">
-                        <input
-                            type="checkbox"
-                            checked={autoApproveUnread}
-                            onChange={(event) =>
-                                setAutoApproveUnread(event.target.checked)
-                            }
-                        />
-                        Auto-read unread emails and move them to ready-to-send without manual approval
-                    </label>
-
-                    <label className="flex items-start gap-2 text-xs text-muted">
-                        <input
-                            type="checkbox"
-                            checked={autoSendReadyEmails}
-                            onChange={(event) =>
-                                setAutoSendReadyEmails(event.target.checked)
-                            }
-                        />
-                        Auto-send ready-to-send emails without human intervention
-                    </label>
-
-                    <p className="text-xs text-muted">
-                        When both options are active, new unread emails can be processed and sent automatically.
-                    </p>
-                </div>
-
-                <div className="flex flex-col gap-2 text-sm">
-                    <label className="font-medium">Security</label>
-                    <p className="text-xs text-muted">
-                        Need a password reset link for your account email?
-                    </p>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                        <button
-                            type="button"
-                            onClick={sendResetPasswordLink}
-                            disabled={sendingResetLink || loading}
-                            className="rounded-md border border-primary px-3 py-2 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
-                        >
-                            {sendingResetLink ? "Sending..." : "Send Password Reset Link"}
-                        </button>
-                        <a
-                            href="/forgot-password"
-                            className="rounded-md border border-border px-3 py-2 text-xs hover:border-primary"
-                        >
-                            Open Forgot Password Page
-                        </a>
+            {/* Status Messages */}
+            {status && (
+                <div className={`rounded-xl border px-4 py-3 text-sm ${
+                    status.includes("success") || status === "Settings saved successfully."
+                        ? "border-success/20 bg-success/5 text-success"
+                        : "border-danger/20 bg-danger/5 text-danger"
+                }`}>
+                    <div className="flex items-center gap-2">
+                        {status.includes("success") || status === "Settings saved successfully." ? (
+                            <Check size={16} />
+                        ) : (
+                            <AlertCircle size={16} />
+                        )}
+                        {status}
                     </div>
-                    {resetLinkStatus && (
-                        <p className="text-xs text-muted">{resetLinkStatus}</p>
-                    )}
                 </div>
+            )}
 
-                <div className="flex flex-col gap-2 text-sm">
-                    <label className="font-medium">AI Provider Settings</label>
-                    <label className="flex items-center gap-2 text-xs text-muted">
-                        <input
-                            type="checkbox"
-                            checked={useDefaultAiProvider}
-                            onChange={(event) =>
-                                setUseDefaultAiProvider(event.target.checked)
-                            }
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {/* Email Settings */}
+                <SettingsCard icon={Mail} title="Email Settings" accent="primary">
+                    <div className="flex flex-col gap-3">
+                        <InputField
+                            label="Email Address"
+                            type="email"
+                            value={emailAddress}
+                            onChange={setEmailAddress}
+                            placeholder="example@gmail.com"
                         />
-                        Use default AI provider and API key
-                    </label>
-
-                    <select
-                        value={aiProvider}
-                        onChange={(event) =>
-                            setAiProvider(normalizeProvider(event.target.value))
-                        }
-                        disabled={useDefaultAiProvider}
-                        className="border border-border rounded-md px-3 py-2 outline-none text-sm disabled:opacity-60"
-                    >
-                        <option value="gemini">Gemini</option>
-                        <option value="openai">OpenAI</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                    </select>
-
-                    <input
-                        type="password"
-                        value={aiApiKey}
-                        onChange={(event) => setAiApiKey(event.target.value)}
-                        disabled={useDefaultAiProvider}
-                        placeholder={
-                            hasSavedAiApiKey
-                                ? "****************"
-                                : "Enter provider API key"
-                        }
-                        className="border border-border rounded-md px-3 py-2 outline-none text-sm disabled:opacity-60"
-                        autoComplete="new-password"
-                    />
-                    <p className="text-xs text-muted">
-                        Leave blank to keep current key.
-                    </p>
-                </div>
-
-                <div className="flex flex-col gap-1 text-sm">
-                    <label>Custom Email Categories</label>
-                    <p className="text-xs text-muted">
-                        Default categories stay active: {defaultCategories.join(", ")}
-                    </p>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                        <input
-                            type="text"
-                            value={newParam}
-                            onChange={(event) => setNewParam(event.target.value)}
-                            placeholder="Add custom category"
-                            className="border border-border rounded-md px-3 py-2 flex-1 outline-none text-sm"
+                        <InputField
+                            label="App Password"
+                            type="password"
+                            value={emailAppPassword}
+                            onChange={setEmailAppPassword}
+                            placeholder={hasSavedAppPassword ? "••••••••" : "Enter email app password"}
+                            hint="This password is encrypted at rest. Leave blank to keep current."
                         />
-                        <button
-                            type="button"
-                            onClick={addParam}
-                            className="bg-primary text-white px-3 py-2 rounded-md hover:bg-primary/80 sm:w-auto w-full flex items-center justify-center"
-                        >
-                            <Plus size={14} />
-                        </button>
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                        {params.map((param, index) => (
-                            <div
-                                key={index}
-                                className="flex items-center gap-1 border border-border rounded-md px-2 py-1 text-xs bg-muted/10"
+                </SettingsCard>
+
+                {/* Security */}
+                <SettingsCard icon={Shield} title="Security" accent="tag-important">
+                    <div className="flex flex-col gap-3">
+                        <p className="text-xs text-muted">
+                            Need a password reset link for your account email?
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={sendResetPasswordLink}
+                                disabled={sendingResetLink || loading}
+                                className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:opacity-50"
                             >
-                                {param}
-                                <X
-                                    size={12}
-                                    className="cursor-pointer"
-                                    onClick={() => removeParam(index)}
-                                />
-                            </div>
-                        ))}
+                                {sendingResetLink ? "Sending..." : "Send Reset Link"}
+                            </button>
+                            <a
+                                href="/forgot-password"
+                                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:border-primary/30 hover:text-text"
+                            >
+                                Open Forgot Password
+                            </a>
+                        </div>
+                        {resetLinkStatus && (
+                            <p className="text-xs text-muted">{resetLinkStatus}</p>
+                        )}
                     </div>
-                </div>
+                </SettingsCard>
 
-                <div className="flex flex-col gap-1 text-sm">
-                    <label>Custom AI Prompt</label>
-                    <textarea
-                        value={promptDescription}
-                        onChange={(event) => setPromptDescription(event.target.value)}
-                        placeholder="Add extra instruction for AI analyzer (this is appended to default prompt)"
-                        className="border border-border rounded-md px-3 py-2 outline-none text-sm resize-none h-24"
-                    />
-                </div>
+                {/* AI Provider */}
+                <SettingsCard icon={Sparkles} title="AI Provider" accent="tag-unread">
+                    <div className="flex flex-col gap-3">
+                        <CheckboxField
+                            label="Use default AI provider and API key"
+                            checked={useDefaultAiProvider}
+                            onChange={setUseDefaultAiProvider}
+                        />
+                        <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-medium text-muted">Provider</label>
+                            <select
+                                value={aiProvider}
+                                onChange={(event) =>
+                                    setAiProvider(normalizeProvider(event.target.value))
+                                }
+                                disabled={useDefaultAiProvider}
+                                className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
+                            >
+                                <option value="gemini">Gemini</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Anthropic (Claude)</option>
+                            </select>
+                        </div>
+                        <InputField
+                            label="API Key"
+                            type="password"
+                            value={aiApiKey}
+                            onChange={setAiApiKey}
+                            placeholder={hasSavedAiApiKey ? "••••••••" : "Enter provider API key"}
+                            hint="Leave blank to keep current key."
+                            disabled={useDefaultAiProvider}
+                        />
+                    </div>
+                </SettingsCard>
 
-                <div className="flex justify-end mt-2">
-                    <button
-                        type="button"
-                        disabled={saving || loading}
-                        onClick={saveSettings}
-                        className="bg-success text-white px-4 py-2 rounded-md hover:bg-success/80 text-sm disabled:opacity-50 w-full sm:w-auto"
-                    >
-                        {saving ? "Saving..." : "Save Settings"}
-                    </button>
-                </div>
-                {status && <p className="text-xs text-muted">{status}</p>}
+                {/* Automation */}
+                <SettingsCard icon={Tag} title="Automation" accent="tag-sent">
+                    <div className="flex flex-col gap-3">
+                        <CheckboxField
+                            label="Auto-approve unread emails and move to ready-to-send"
+                            checked={autoApproveUnread}
+                            onChange={setAutoApproveUnread}
+                        />
+                        <CheckboxField
+                            label="Auto-send ready-to-send emails without intervention"
+                            checked={autoSendReadyEmails}
+                            onChange={setAutoSendReadyEmails}
+                        />
+                        <p className="text-[10px] text-muted">
+                            When both options are active, new emails can be processed and sent automatically.
+                        </p>
+                    </div>
+                </SettingsCard>
+
+                {/* Custom Categories */}
+                <SettingsCard icon={Tag} title="Custom Categories" accent="tag-important">
+                    <div className="flex flex-col gap-3">
+                        <p className="text-[10px] text-muted">
+                            Default: {defaultCategories.join(", ")}
+                        </p>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={newParam}
+                                onChange={(event) => setNewParam(event.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && addParam()}
+                                placeholder="Add custom category"
+                                className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text placeholder:text-muted/50 transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10"
+                            />
+                            <button
+                                type="button"
+                                onClick={addParam}
+                                className="flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-white transition hover:bg-primary-hover"
+                            >
+                                <Plus size={14} />
+                            </button>
+                        </div>
+                        {params.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {params.map((param, index) => (
+                                    <span
+                                        key={index}
+                                        className="flex items-center gap-1 rounded-lg border border-border bg-bg/50 px-2 py-1 text-xs text-text"
+                                    >
+                                        {param}
+                                        <X
+                                            size={12}
+                                            className="cursor-pointer text-muted transition hover:text-danger"
+                                            onClick={() => removeParam(index)}
+                                        />
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </SettingsCard>
+
+                {/* Custom Prompt */}
+                <SettingsCard icon={FileText} title="Custom AI Prompt" accent="primary">
+                    <div className="flex flex-col gap-3">
+                        <p className="text-[10px] text-muted">
+                            Extra instructions appended to the default AI prompt.
+                        </p>
+                        <textarea
+                            value={promptDescription}
+                            onChange={(event) => setPromptDescription(event.target.value)}
+                            placeholder="Add extra instruction for AI analyzer..."
+                            className="min-h-[120px] w-full resize-none rounded-lg border border-border bg-bg px-3 py-2.5 font-sans text-xs text-text placeholder:text-muted/50 transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10"
+                        />
+                    </div>
+                </SettingsCard>
             </div>
         </div>
+    );
+}
+
+function SettingsCard({
+    icon: Icon,
+    title,
+    accent,
+    children,
+}: {
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    title: string;
+    accent: string;
+    children: React.ReactNode;
+}) {
+    const colorMap: Record<string, string> = {
+        primary: "bg-primary/10 text-primary",
+        "tag-unread": "bg-tag-unread/10 text-tag-unread",
+        "tag-sent": "bg-tag-sent/10 text-tag-sent",
+        "tag-important": "bg-tag-important/10 text-tag-important",
+    };
+
+    return (
+        <div className="rounded-xl border border-border bg-card">
+            <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+                <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${colorMap[accent] || "bg-primary/10 text-primary"}`}>
+                    <Icon size={14} />
+                </div>
+                <h3 className="text-sm font-semibold text-text">{title}</h3>
+            </div>
+            <div className="p-4">{children}</div>
+        </div>
+    );
+}
+
+function InputField({
+    label,
+    type,
+    value,
+    onChange,
+    placeholder,
+    hint,
+    disabled,
+}: {
+    label: string;
+    type: string;
+    value: string;
+    onChange: (value: string) => void;
+    placeholder: string;
+    hint?: string;
+    disabled?: boolean;
+}) {
+    return (
+        <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-medium text-muted">{label}</label>
+            <input
+                type={type}
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                placeholder={placeholder}
+                disabled={disabled}
+                className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text placeholder:text-muted/50 transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
+                autoComplete="new-password"
+            />
+            {hint && <p className="text-[10px] text-muted">{hint}</p>}
+        </div>
+    );
+}
+
+function CheckboxField({
+    label,
+    checked,
+    onChange,
+}: {
+    label: string;
+    checked: boolean;
+    onChange: (value: boolean) => void;
+}) {
+    return (
+        <label className="flex items-start gap-2.5 cursor-pointer">
+            <div className="relative mt-0.5">
+                <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => onChange(event.target.checked)}
+                    className="peer sr-only"
+                />
+                <div className="h-4 w-4 rounded border border-border bg-bg transition checked:border-primary checked:bg-primary peer-focus:ring-2 peer-focus:ring-primary/20" />
+                <Check size={10} className="absolute left-1 top-1 text-white opacity-0 transition peer-checked:opacity-100" />
+            </div>
+            <span className="text-xs text-text">{label}</span>
+        </label>
     );
 }

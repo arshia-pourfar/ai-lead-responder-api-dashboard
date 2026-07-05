@@ -13,9 +13,8 @@ import {
     Tooltip,
     Legend,
 } from "recharts";
-import PageHeader from "@/components/ui/Header";
+import { DollarSign, Check, BarChart3, ShoppingBag, TrendingUp } from "lucide-react";
 import EmailItem from "@/components/email/EmailItem";
-import { Check, DollarSign } from "lucide-react";
 import SuperLoading from "@/components/ui/SuperLoading";
 
 interface SoldEmail {
@@ -112,34 +111,48 @@ export default function AnalysisPage() {
         return Math.round(total / salesData.length);
     }, [salesData]);
 
-    if (loading) return <SuperLoading variant="analytics" label="Preparing analytics" />;
+    const totalCategories = useMemo(() => {
+        return categoryData.reduce((sum, item) => sum + item.value, 0);
+    }, [categoryData]);
 
-    // تابع برای اطلاع دادن به داشبورد هنگام کلیک روی چشم
-    const handleSelectEmail = (emailId: string) => {
-        console.log("Selected email:", emailId);
-        // می‌توانی اینجا state یا context داشبورد رو آپدیت کنی
-    };
+    if (loading) return <SuperLoading variant="analytics" label="Preparing analytics" />;
 
     return (
         <div className="flex h-full min-w-0 flex-col gap-4 overflow-auto">
-            {/* HEADER */}
-            <PageHeader
-                title="Analysis"
-                subtitle="AI Sales & Email Insights"
-                stats={[
-                    { icon: DollarSign, label: "Total Sales", value: `$${totalSales}`, color: "text-success" },
-                    { icon: Check, label: "Confirmed Emails", value: soldEmails.length, color: "text-primary" },
-                    { icon: DollarSign, label: "Avg / Month", value: `$${averageMonthlySales}`, color: "text-warning" },
-                ]}
-            />
-            {error && <p className="text-xs text-danger">{error}</p>}
+            {/* Header */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-text">Analytics</h1>
+                    <p className="mt-1 text-sm text-muted">AI Sales & Email Insights</p>
+                </div>
+            </div>
 
-            {/* CHARTS GRID */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* PIE CHART */}
-                <div className="min-w-0 border border-border rounded-xl p-4 flex flex-col gap-2">
-                    <h3 className="font-semibold text-sm mb-2">Leads by Category</h3>
-                    <div className="w-full h-48">
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatCard icon={DollarSign} label="Total Sales" value={`$${totalSales}`} accent="primary" />
+                <StatCard icon={Check} label="Confirmed" value={soldEmails.length} accent="tag-unread" />
+                <StatCard icon={TrendingUp} label="Avg / Month" value={`$${averageMonthlySales}`} accent="tag-sent" />
+                <StatCard icon={ShoppingBag} label="Categories" value={totalCategories} accent="tag-important" />
+            </div>
+
+            {/* Error */}
+            {error && (
+                <div className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+                    {error}
+                </div>
+            )}
+
+            {/* Charts Grid */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {/* Pie Chart */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                    <div className="mb-4 flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <BarChart3 size={16} />
+                        </div>
+                        <h3 className="text-sm font-semibold text-text">Leads by Category</h3>
+                    </div>
+                    <div className="h-64">
                         {categoryData.length > 0 ? (
                             <ResponsiveContainer>
                                 <PieChart>
@@ -149,74 +162,156 @@ export default function AnalysisPage() {
                                         nameKey="name"
                                         cx="50%"
                                         cy="50%"
-                                        outerRadius={70}
-                                        label
+                                        outerRadius={80}
+                                        innerRadius={40}
+                                        paddingAngle={2}
+                                        label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                                     >
                                         {categoryData.map((entry, index) => (
-                                            <Cell key={index} fill={entry.color} />
+                                            <Cell key={index} fill={entry.color} stroke="none" />
                                         ))}
                                     </Pie>
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: "var(--card)",
+                                            border: "1px solid var(--border)",
+                                            borderRadius: "8px",
+                                            fontSize: "12px",
+                                        }}
+                                    />
                                     <Legend />
-                                    <Tooltip />
                                 </PieChart>
                             </ResponsiveContainer>
                         ) : (
-                            <p className="text-xs text-muted">No category data</p>
+                            <div className="flex h-full items-center justify-center text-muted">
+                                <p className="text-sm">No category data</p>
+                            </div>
                         )}
                     </div>
                 </div>
 
-                {/* SALES BAR CHART */}
-                <div className="min-w-0 border border-border rounded-xl p-4 flex flex-col gap-2">
-                    <h3 className="font-semibold text-sm mb-2">Sales Over Time</h3>
-                    <div className="w-full h-48">
+                {/* Bar Chart */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                    <div className="mb-4 flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-tag-unread/10 text-tag-unread">
+                            <TrendingUp size={16} />
+                        </div>
+                        <h3 className="text-sm font-semibold text-text">Sales Over Time</h3>
+                    </div>
+                    <div className="h-64">
                         {salesData.length > 0 ? (
                             <ResponsiveContainer>
                                 <BarChart data={salesData}>
-                                    <XAxis dataKey="month" />
-                                    <YAxis />
-                                    <Tooltip />
-                                    <Legend />
-                                    <Bar dataKey="sales" fill="#3b82f6" />
+                                    <XAxis
+                                        dataKey="month"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 12, fill: "var(--muted)" }}
+                                    />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 12, fill: "var(--muted)" }}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: "var(--card)",
+                                            border: "1px solid var(--border)",
+                                            borderRadius: "8px",
+                                            fontSize: "12px",
+                                        }}
+                                    />
+                                    <Bar
+                                        dataKey="sales"
+                                        fill="var(--primary)"
+                                        radius={[4, 4, 0, 0]}
+                                    />
                                 </BarChart>
                             </ResponsiveContainer>
                         ) : (
-                            <p className="text-xs text-muted">No monthly sales data</p>
+                            <div className="flex h-full items-center justify-center text-muted">
+                                <p className="text-sm">No monthly sales data</p>
+                            </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* SOLD EMAILS LIST */}
-            <div className="min-h-0 border border-border rounded-xl p-4 flex flex-col gap-2">
-                <h3 className="font-semibold text-sm mb-2">Sold Emails</h3>
-                <div className="max-h-[45vh] overflow-y-auto pe-1 scrollbar-thin">
+            {/* Sold Emails List */}
+            <div className="rounded-xl border border-border bg-card">
+                <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-tag-important/10 text-tag-important">
+                        <ShoppingBag size={16} />
+                    </div>
+                    <h3 className="text-sm font-semibold text-text">Sold Emails</h3>
+                    <span className="ml-auto flex h-6 min-w-[24px] items-center justify-center rounded-full bg-border/50 px-2 text-xs font-medium text-muted">
+                        {soldEmails.length}
+                    </span>
+                </div>
+                <div className="scrollbar-thin max-h-[40vh] overflow-y-auto p-3">
                     {soldEmails.length > 0 ? (
-                        soldEmails.map((email) => (
-                            <EmailItem
-                                key={email.id}
-                                id={email.id}
-                                subject={email.subject}
-                                sender={email.sender}
-                                body={email.body || "No body available"}
-                                bodyHtml={email.bodyHtml || ""}
-                                tag="important"
-                                onSelect={() => handleSelectEmail(email.id)}
-                            />
-                        ))
+                        <div className="flex flex-col gap-2">
+                            {soldEmails.map((email) => (
+                                <EmailItem
+                                    key={email.id}
+                                    id={email.id}
+                                    subject={email.subject}
+                                    sender={email.sender}
+                                    body={email.body || "No body available"}
+                                    bodyHtml={email.bodyHtml || ""}
+                                    tag="important"
+                                />
+                            ))}
+                        </div>
                     ) : (
-                        <p className="text-xs text-muted">No sold emails found</p>
+                        <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 text-muted">
+                            <ShoppingBag size={32} className="opacity-30" />
+                            <p className="text-sm">No sold emails found</p>
+                        </div>
                     )}
                 </div>
-
             </div>
 
-            {/* FUTURE AI ANALYSIS */}
-            <div className="border border-border rounded-xl p-4 text-center text-sm text-muted">
-                AI Analysis Program (Coming Soon)
-                <p className="mt-1 text-xs">
+            {/* Coming Soon */}
+            <div className="rounded-xl border border-dashed border-border bg-card/50 p-6 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <BarChart3 size={24} />
+                </div>
+                <h4 className="text-sm font-semibold text-text">AI Analysis Coming Soon</h4>
+                <p className="mt-1 text-xs text-muted">
                     This section will analyze all data and provide insights once the program is available.
                 </p>
+            </div>
+        </div>
+    );
+}
+
+function StatCard({
+    icon: Icon,
+    label,
+    value,
+    accent,
+}: {
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    label: string;
+    value: number | string;
+    accent: string;
+}) {
+    const colorMap: Record<string, string> = {
+        primary: "bg-primary/10 text-primary",
+        "tag-unread": "bg-tag-unread/10 text-tag-unread",
+        "tag-sent": "bg-tag-sent/10 text-tag-sent",
+        "tag-important": "bg-tag-important/10 text-tag-important",
+    };
+
+    return (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition hover:border-primary/30">
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${colorMap[accent] || "bg-primary/10 text-primary"}`}>
+                <Icon size={18} />
+            </div>
+            <div className="min-w-0">
+                <p className="text-xl font-bold text-text">{value}</p>
+                <p className="text-xs text-muted">{label}</p>
             </div>
         </div>
     );

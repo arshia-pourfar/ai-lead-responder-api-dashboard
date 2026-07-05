@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Eye, Pencil } from "lucide-react";
+import { Check, Eye, Pencil, Send } from "lucide-react";
 
 type TagType = "ready" | "unread" | "sent" | "important";
 
@@ -28,6 +28,13 @@ interface EmailProps {
         tag: "ready";
     }) => void;
 }
+
+const TAG_STYLES: Record<TagType, string> = {
+    ready: "bg-primary/10 text-primary border-primary/20",
+    unread: "bg-tag-unread/10 text-tag-unread border-tag-unread/20",
+    sent: "bg-tag-sent/10 text-tag-sent border-tag-sent/20",
+    important: "bg-tag-important/10 text-tag-important border-tag-important/20",
+};
 
 export default function EmailItem({
     id,
@@ -56,14 +63,6 @@ export default function EmailItem({
         setManualText(manualReply || "");
     }, [aiReply, manualReply]);
 
-    const tagMap = {
-        ready: "bg-tag-ready/20 text-tag-ready",
-        unread: "bg-tag-unread/20 text-tag-unread",
-        sent: "bg-tag-sent/20 text-tag-sent",
-        important: "bg-tag-important/20 text-tag-important",
-    };
-
-    // ---------- APPROVE EMAIL (move to ready without sending) ----------
     const handleApproveModel = async () => {
         if (!decision) return;
         setApproving(true);
@@ -109,7 +108,6 @@ export default function EmailItem({
                 return;
             }
 
-            // فقط move به ready و ذخیره متن، ارسال نمی‌کنه
             const approveRes = await fetch("/api/unread-emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -141,7 +139,6 @@ export default function EmailItem({
         }
     };
 
-    // ---------- SAVE EDIT (only save text, no send) ----------
     const handleSaveEdit = async () => {
         if (!editText.trim()) return;
         setSavingEdit(true);
@@ -171,7 +168,6 @@ export default function EmailItem({
         }
     };
 
-    // ---------- FINAL SEND (only here send) ----------
     const handleFinalConfirm = async () => {
         setSending(true);
         const finalReply = (isEditing ? editText : manualText || aiReply || "").trim();
@@ -208,23 +204,25 @@ export default function EmailItem({
     };
 
     return (
-        <div className="my-1 flex min-w-0 flex-col gap-2 rounded-lg border bg-card border-border p-3">
+        <div className="group rounded-xl border border-border bg-bg/50 p-3 transition hover:border-primary/20 hover:bg-card">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="w-3/4 flex flex-col gap-1">
-                    <div className="max-w-full flex flex-wrap justify-between items-start gap-2 sm:gap-3">
-                        <div className="min-w-0 max-w-3/4">
-                            <p className="wrap-break-word text-sm font-semibold text-text">{subject}</p>
-                            <p className="break-all text-xs text-muted">{sender}</p>
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-text">{subject}</p>
+                            <p className="mt-0.5 truncate text-xs text-muted">{sender}</p>
                         </div>
-                        <span className={`shrink-0 rounded px-2 py-1 text-xs ${tagMap[tag]}`}>{tag}</span>
+                        <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-medium ${TAG_STYLES[tag]}`}>
+                            {tag}
+                        </span>
                     </div>
                 </div>
 
-                <div className="flex flex-wrap gap-1 self-end sm:self-auto">
+                <div className="flex shrink-0 items-center gap-1">
                     <button
                         onClick={onSelect}
-                        title="View email details"
-                        className="rounded-md border border-border p-1.5 text-muted hover:border-primary"
+                        title="View details"
+                        className="rounded-lg border border-border p-1.5 text-muted transition hover:border-primary hover:text-primary"
                     >
                         <Eye size={14} />
                     </button>
@@ -233,8 +231,8 @@ export default function EmailItem({
                         <button
                             onClick={handleApproveModel}
                             disabled={approving}
-                            title="Approve email"
-                            className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
+                            title="Approve"
+                            className="rounded-lg border border-success/30 bg-success/5 p-1.5 text-success transition hover:bg-success/10 disabled:opacity-50"
                         >
                             <Check size={14} />
                         </button>
@@ -246,7 +244,7 @@ export default function EmailItem({
                                 <button
                                     onClick={() => setIsEditing(true)}
                                     title="Edit reply"
-                                    className="rounded-md border border-accent p-1.5 text-accent hover:bg-accent/10"
+                                    className="rounded-lg border border-accent/30 bg-accent/5 p-1.5 text-accent transition hover:bg-accent/10"
                                 >
                                     <Pencil size={14} />
                                 </button>
@@ -255,7 +253,7 @@ export default function EmailItem({
                                     onClick={handleSaveEdit}
                                     disabled={savingEdit}
                                     title="Save changes"
-                                    className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
+                                    className="rounded-lg border border-success/30 bg-success/5 p-1.5 text-success transition hover:bg-success/10 disabled:opacity-50"
                                 >
                                     <Check size={14} />
                                 </button>
@@ -264,10 +262,10 @@ export default function EmailItem({
                             <button
                                 onClick={handleFinalConfirm}
                                 disabled={sending}
-                                title="Send email"
-                                className="rounded-md border border-success p-1.5 text-success hover:bg-success/10 disabled:opacity-50"
+                                title="Send now"
+                                className="rounded-lg border border-primary/30 bg-primary/5 p-1.5 text-primary transition hover:bg-primary/10 disabled:opacity-50"
                             >
-                                <Check size={14} />
+                                <Send size={14} />
                             </button>
                         </>
                     )}
@@ -275,7 +273,7 @@ export default function EmailItem({
             </div>
 
             {tag === "unread" && (
-                <div className="mt-1 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-1.5">
                     <DecisionBtn label="AI Reply" active={decision === "ai"} onClick={() => setDecision("ai")} />
                     <DecisionBtn label="Ignore" active={decision === "ignore"} onClick={() => setDecision("ignore")} />
                     <DecisionBtn label="Manual" active={decision === "manual"} onClick={() => setDecision("manual")} />
@@ -287,7 +285,8 @@ export default function EmailItem({
                     value={manualText}
                     onChange={(e) => setManualText(e.target.value)}
                     placeholder="Write manual reply..."
-                    className="mt-2 p-2 border border-border rounded-md text-sm h-24 resize-none bg-bg/50"
+                    className="mt-2 w-full resize-none rounded-lg border border-border bg-bg/70 p-2.5 text-sm text-text placeholder:text-muted/50 focus:border-primary focus:outline-none"
+                    rows={3}
                 />
             )}
 
@@ -296,7 +295,8 @@ export default function EmailItem({
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
                     placeholder="Edit reply message..."
-                    className="mt-2 p-2 border border-border rounded-md text-sm h-24 resize-none bg-bg/50"
+                    className="mt-2 w-full resize-none rounded-lg border border-border bg-bg/70 p-2.5 text-sm text-text placeholder:text-muted/50 focus:border-primary focus:outline-none"
+                    rows={3}
                 />
             )}
         </div>
@@ -307,8 +307,11 @@ function DecisionBtn({ label, active, onClick }: { label: string; active: boolea
     return (
         <button
             onClick={onClick}
-            className={`px-2 py-1 text-xs rounded-md border transition ${active ? "border-primary text-primary bg-primary/10" : "border-border text-muted hover:border-primary"
-                }`}
+            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                active
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted hover:border-primary/50 hover:text-text"
+            }`}
         >
             {label}
         </button>
