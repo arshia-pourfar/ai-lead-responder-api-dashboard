@@ -12,9 +12,6 @@ const prisma =
         datasources: {
             db: {
                 url: process.env.DATABASE_URL,
-                pool: {
-                    timeout: 10000,
-                },
             },
         },
     });
