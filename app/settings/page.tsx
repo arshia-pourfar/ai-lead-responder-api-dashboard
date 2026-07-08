@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X, Mail, Shield, Sparkles, Tag, FileText, Save, Check, AlertCircle } from "lucide-react";
+import { Plus, X, Mail, Shield, Sparkles, Tag, FileText, Save, Check, AlertCircle, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 import SuperLoading from "@/components/ui/SuperLoading";
 
 type AiProvider = "gemini" | "openai" | "anthropic";
@@ -54,6 +55,8 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+    const [confirmLogout, setConfirmLogout] = useState(false);
+    const router = useRouter();
 
     const normalizeProvider = (value: unknown): AiProvider => {
         if (value === "openai" || value === "anthropic" || value === "gemini") {
@@ -233,6 +236,12 @@ export default function SettingsPage() {
         }
     };
 
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        router.push("/login");
+    };
+
     const sendResetPasswordLink = async () => {
         const targetEmail = (
             registrationEmail ||
@@ -285,15 +294,45 @@ export default function SettingsPage() {
                     <h1 className="text-2xl font-bold tracking-tight text-text">Settings</h1>
                     <p className="mt-1 text-sm text-muted">Configure your AI Email Assistant</p>
                 </div>
-                <button
-                    type="button"
-                    disabled={saving || loading}
-                    onClick={saveSettings}
-                    className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
-                >
-                    <Save size={16} />
-                    {saving ? "Saving..." : "Save Settings"}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        disabled={saving || loading}
+                        onClick={saveSettings}
+                        className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
+                    >
+                        <Save size={16} />
+                        {saving ? "Saving..." : "Save Settings"}
+                    </button>
+                    {confirmLogout ? (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-danger font-medium">Are you sure?</span>
+                            <button
+                                type="button"
+                                onClick={handleLogout}
+                                className="flex items-center gap-2 rounded-xl bg-danger px-4 py-2.5 text-sm font-medium text-white transition hover:bg-danger/80"
+                            >
+                                Yes, Logout
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmLogout(false)}
+                                className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-muted transition hover:border-primary/30 hover:text-text"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => setConfirmLogout(true)}
+                            className="mr-1 flex items-center gap-2 rounded-xl bg-danger px-4 py-2.5 text-sm font-medium text-white transition hover:bg-danger/80"
+                        >
+                            <LogOut size={16} />
+                            Logout
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Status Messages */}
@@ -563,7 +602,7 @@ function CheckboxField({
                     onChange={(event) => onChange(event.target.checked)}
                     className="peer sr-only"
                 />
-                <div className="h-4 w-4 rounded border border-border bg-bg transition checked:border-primary checked:bg-primary peer-focus:ring-2 peer-focus:ring-primary/20" />
+                <div className="h-4 w-4 rounded border border-border bg-bg transition peer-checked:border-primary peer-checked:bg-primary peer-focus:ring-2 peer-focus:ring-primary/20" />
                 <Check size={10} className="absolute left-1 top-1 text-white opacity-0 transition peer-checked:opacity-100" />
             </div>
             <span className="text-xs text-text">{label}</span>

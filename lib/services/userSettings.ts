@@ -498,7 +498,7 @@ export async function saveUserAiSettings(
             await writePromptValue(tx, userId, CUSTOM_AI_PROVIDER_TITLE, aiProviderSettingsInput.provider);
             await writePromptValue(tx, userId, CUSTOM_AI_API_KEY_ENCRYPTED_TITLE, nextEncryptedKey);
         },
-        { timeout: 60000 }
+        { timeout: 10000 }
     );
 
     return getUserAiSettings(userId);
@@ -526,7 +526,7 @@ export async function saveUserAutomationSettings(
                 autoSendReadyEmails ? "1" : ""
             );
         },
-        { timeout: 60000 }
+        { timeout: 10000 }
     );
 
     return getUserAutomationSettings(userId);

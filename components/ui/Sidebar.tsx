@@ -14,7 +14,10 @@ import {
     Menu,
     X,
     Sparkles,
+    BookOpen,
+    LogIn,
 } from "lucide-react";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 interface SidebarItem {
     href: string;
@@ -37,6 +40,7 @@ const secondaryItems: SidebarItem[] = [
 export default function Sidebar() {
     const path = usePathname();
     const [mobileOpen, setMobileOpen] = useState(false);
+    const { isLoggedIn } = useAuth();
 
     const renderLink = (
         href: string,
@@ -122,7 +126,11 @@ export default function Sidebar() {
 
                 <div className="mt-auto px-3 pb-4">
                     <div className="mb-3 h-px bg-border" />
-                    {renderLink("/settings", "Settings", Settings)}
+                    {isLoggedIn
+                        ? renderLink("/settings", "Settings", Settings)
+                        : renderLink("/login", "Login", LogIn)
+                    }
+                    {renderLink("/docs", "Documentation", BookOpen)}
                     <p className="mt-4 px-3 text-[10px] text-muted/50">v1.0 AI Panel</p>
                 </div>
             </aside>

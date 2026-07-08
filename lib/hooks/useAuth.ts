@@ -1,0 +1,16 @@
+"use client";
+
+import { useState, useEffect } from "react";
+
+export function useAuth() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    setIsLoggedIn(!!token);
+    setLoading(false);
+  }, []);
+
+  return { isLoggedIn, loading };
+}

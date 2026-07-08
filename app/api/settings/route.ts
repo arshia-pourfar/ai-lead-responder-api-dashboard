@@ -159,53 +159,53 @@ export async function POST(req: NextRequest) {
     const shouldUpdateAutomationSettings = Boolean(automationSettingsInput);
 
     try {
-        const [aiSettings, emailSettings, automationSettings] = await Promise.all([
-            saveUserAiSettings(user.id, {
-                customPrompt,
-                customCategories,
-                aiProviderSettings: aiSettingsInput
-                    ? {
-                        useDefaultProvider: parseBoolean(
-                            aiSettingsInput.useDefaultProvider,
-                            true
-                        ),
-                        provider:
-                            typeof aiSettingsInput.provider === "string"
-                                ? aiSettingsInput.provider
-                                : undefined,
-                        apiKey:
-                            typeof aiSettingsInput.apiKey === "string"
-                                ? aiSettingsInput.apiKey
-                                : "",
-                    }
-                    : undefined,
-            }),
-            shouldUpdateEmailSettings
-                ? saveUserEmailSettings({
-                    userId: user.id,
-                    emailAddress:
-                        typeof emailSettingsInput?.emailAddress === "string"
-                            ? emailSettingsInput.emailAddress
-                            : "",
-                    appPassword:
-                        typeof emailSettingsInput?.appPassword === "string"
-                            ? emailSettingsInput.appPassword
-                            : "",
-                })
-                : getUserEmailSettings(user.id),
-            shouldUpdateAutomationSettings
-                ? saveUserAutomationSettings(user.id, {
-                    autoApproveUnread: parseBoolean(
-                        automationSettingsInput?.autoApproveUnread,
-                        false
+        const aiSettings = await saveUserAiSettings(user.id, {
+            customPrompt,
+            customCategories,
+            aiProviderSettings: aiSettingsInput
+                ? {
+                    useDefaultProvider: parseBoolean(
+                        aiSettingsInput.useDefaultProvider,
+                        true
                     ),
-                    autoSendReadyEmails: parseBoolean(
-                        automationSettingsInput?.autoSendReadyEmails,
-                        false
-                    ),
-                })
-                : getUserAutomationSettings(user.id),
-        ]);
+                    provider:
+                        typeof aiSettingsInput.provider === "string"
+                            ? aiSettingsInput.provider
+                            : undefined,
+                    apiKey:
+                        typeof aiSettingsInput.apiKey === "string"
+                            ? aiSettingsInput.apiKey
+                            : "",
+                }
+                : undefined,
+        });
+
+        const emailSettings = shouldUpdateEmailSettings
+            ? await saveUserEmailSettings({
+                userId: user.id,
+                emailAddress:
+                    typeof emailSettingsInput?.emailAddress === "string"
+                        ? emailSettingsInput.emailAddress
+                        : "",
+                appPassword:
+                    typeof emailSettingsInput?.appPassword === "string"
+                        ? emailSettingsInput.appPassword
+                        : "",
+            })
+            : await getUserEmailSettings(user.id);
+
+        const automationSettings = shouldUpdateAutomationSettings
+            ? await saveUserAutomationSettings(user.id, {
+                autoApproveUnread: parseBoolean(
+                    automationSettingsInput?.autoApproveUnread,
+                    false
+                ),
+                autoSendReadyEmails: parseBoolean(
+                    automationSettingsInput?.autoSendReadyEmails,
+                    false
+                ),
+            })
+            : await getUserAutomationSettings(user.id);
 
         return NextResponse.json<SettingsResponse>(
             {
