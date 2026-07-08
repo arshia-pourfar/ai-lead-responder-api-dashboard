@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { notifyAuthChange } from "@/lib/hooks/useAuth";
 
 export default function UserAvatar() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function UserAvatar() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    notifyAuthChange();
     router.push("/login");
   };
 

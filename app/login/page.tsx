@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { notifyAuthChange } from "@/lib/hooks/useAuth";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -23,6 +24,7 @@ export default function LoginPage() {
 
             localStorage.setItem("token", data.token);
             localStorage.setItem("user", JSON.stringify(data.user));
+            notifyAuthChange();
             router.push("/");
         } catch (err: unknown) {
             if (err instanceof Error) setError(err.message);

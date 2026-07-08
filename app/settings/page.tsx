@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, X, Mail, Shield, Sparkles, Tag, FileText, Save, Check, AlertCircle, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { notifyAuthChange } from "@/lib/hooks/useAuth";
 import SuperLoading from "@/components/ui/SuperLoading";
 
 type AiProvider = "gemini" | "openai" | "anthropic";
@@ -239,6 +240,7 @@ export default function SettingsPage() {
     const handleLogout = () => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
+        notifyAuthChange();
         router.push("/login");
     };
 
